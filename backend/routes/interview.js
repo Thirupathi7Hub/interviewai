@@ -53,14 +53,23 @@ router.post('/answer', authMiddleware, async (req, res) => {
     const currentQA = interview.qa[questionIndex];
     if (!currentQA) return res.status(400).json({ error: 'Invalid question index' });
 
-    // Evaluate the answer
-    const evaluation = await evaluateAnswer(
-      currentQA.question,
-      answer,
-      interview.type,
-      interview.domain,
-      questionIndex
-    );
+    const TOTAL_QUESTIONS = interview.totalQuestions || 5;
+    const nextIndex = questionIndex + 1;
+    const isLast = nextIndex >= TOTAL_QUESTIONS;
+
+    // ── Run evaluation + pre-generate next question IN PARALLEL ──────────────
+    // This halves the wait time for the user in most cases.
+    const [evaluation, preGenResult] = await Promise.all([
+      evaluateAnswer(
+        currentQA.question, answer,
+        interview.type, interview.domain, questionIndex
+      ),
+      // Pre-generate next question (regular, non-followup) while evaluating
+      // Skip if this is the last question (no next question needed)
+      !isLast
+        ? generateQuestion(interview.type, interview.domain, nextIndex, interview.qa, false, interview.difficulty)
+        : Promise.resolve(null),
+    ]);
 
     // Update current Q&A entry
     interview.qa[questionIndex].answer          = answer;
@@ -69,19 +78,8 @@ router.post('/answer', authMiddleware, async (req, res) => {
     interview.qa[questionIndex].weaknesses      = evaluation.weaknesses;
     interview.qa[questionIndex].suggestedAnswer = evaluation.suggestedAnswer;
 
-    // Trigger a follow-up if the answer is vague/weak (< 60 score)
-    // Only allow one follow-up per base question to prevent infinite loops.
-    // Also, strictly enforce the total question limit — don't ask a follow-up on the last question.
-    let isFollowUp = false;
-    const TOTAL_QUESTIONS = interview.totalQuestions || 5;
-    
-    if (evaluation.score < 60 && !currentQA.isFollowUp && questionIndex + 1 < TOTAL_QUESTIONS) {
-      isFollowUp = true;
-      // We no longer increase totalQuestions. The follow-up will just consume the next available slot.
-    }
-
-    const nextIndex = questionIndex + 1;
-    const isLast = nextIndex >= TOTAL_QUESTIONS;
+    // Decide if a follow-up is needed (score < 60, not already a follow-up, not last)
+    const isFollowUp = evaluation.score < 60 && !currentQA.isFollowUp && !isLast;
 
     if (isLast) {
       // Calculate final score
@@ -118,14 +116,19 @@ router.post('/answer', authMiddleware, async (req, res) => {
       });
     }
 
-    // Generate next question (or a follow-up)
-    const { question: nextQuestion } = await generateQuestion(
-      interview.type,
-      interview.domain,
-      nextIndex,
-      interview.qa,
-      isFollowUp
-    );
+    // Use pre-generated question if no follow-up needed (score >= 60) — already ready!
+    // Only make an extra AI call for follow-up questions (score < 60)
+    let nextQuestion;
+    if (isFollowUp) {
+      // Need a targeted follow-up — generate specifically
+      const { question: fq } = await generateQuestion(
+        interview.type, interview.domain, nextIndex,
+        interview.qa, true, interview.difficulty
+      );
+      nextQuestion = fq;
+    } else {
+      nextQuestion = preGenResult?.question;
+    }
 
     // Append next question slot
     interview.qa.push({ question: nextQuestion, answer: '', score: 0, isFollowUp });

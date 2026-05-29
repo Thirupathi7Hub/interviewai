@@ -26,11 +26,11 @@ async function callNvidia(messages, retries = 2) {
           model: NVIDIA_MODEL,
           messages,
           temperature: 0.7,
-          max_tokens: 400,  // trimmed — faster response
+          max_tokens: 300,  // questions are short; 300 is plenty
           stream: false,
         },
         {
-          timeout: 30000,   // 30s per attempt
+          timeout: 20000,   // 20s timeout
           headers: {
             Authorization: `Bearer ${NVIDIA_KEY}`,
             'Content-Type': 'application/json',
@@ -111,7 +111,7 @@ Return ONLY the follow-up question text — no preamble, no numbering, no extra 
 
   const messages = [
     { role: 'system', content: systemMsg },
-    { role: 'user', content: 'Generate the next interview question.' },
+    { role: 'user', content: 'Next question:' },
   ];
 
   try {
@@ -133,25 +133,12 @@ export async function evaluateAnswer(question, answer, type, domain, questionInd
 
   const systemMsg = 'You are an encouraging interview coach. Always respond with valid JSON only — no markdown, no extra text.';
 
-  const userMsg = `Evaluate this interview answer.
-
-Context: ${type} interview on "${domain}"
+  const userMsg = `Evaluate this ${type} interview answer on "${domain}".
 Q: "${question}"
-Answer: "${answer}"
-
-Rubric: 90-100=Perfect, 75-89=Very good, 60-74=Good(acceptable), 40-59=Partial, 0-39=Weak.
-If the main concept is correct (even if incomplete) give at least 60.
-
-Respond ONLY with this JSON:
-{
-  "score": <0-100>,
-  "verdict": "<Excellent|Good|Satisfactory|Needs Improvement|Incorrect>",
-  "quickFeedback": "<1 encouraging sentence the interviewer says>",
-  "breakdown": { "content": <0-100>, "communication": <0-100>, "confidence": <0-100> },
-  "strengths": ["<what was good>"],
-  "weaknesses": ["<what to improve>"],
-  "suggestedAnswer": "<ideal answer in 2-3 sentences>"
-}`;
+A: "${answer}"
+Rubric: 90-100=Perfect,75-89=Very good,60-74=Good,40-59=Partial,0-39=Weak. If main concept correct give ≥60.
+Respond ONLY with JSON:
+{"score":<0-100>,"verdict":"<Excellent|Good|Satisfactory|Needs Improvement|Incorrect>","quickFeedback":"<1 sentence>","breakdown":{"content":<0-100>,"communication":<0-100>,"confidence":<0-100>},"strengths":["<strength>"],"weaknesses":["<weakness>"],"suggestedAnswer":"<2-3 sentences>"}`;
 
   const messages = [
     { role: 'system', content: systemMsg },
