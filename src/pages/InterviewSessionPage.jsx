@@ -246,17 +246,6 @@ export default function InterviewSessionPage() {
     if (!input.trim() || typing) return;
     
     // Stop listening if we submit
-    const trimmed = input.trim();
-    const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
-    if (wordCount < 3) {
-      setMessages(m => [...m, {
-        id: Date.now() + 1, role: 'ai',
-        content: '💬 Please provide a more detailed answer (at least a few words) so I can give you proper feedback.',
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      }]);
-      return;
-    }
-
     if (isListening) {
       recognitionRef.current?.stop();
       setIsListening(false);
