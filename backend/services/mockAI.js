@@ -110,10 +110,22 @@ function generateFeedback(answer, questionIndex) {
   if (len > 200) score = Math.min(score + 5, 100);
   if (len < 30) score = Math.max(score - 15, 20);
 
+  const verdicts = ['Excellent', 'Good', 'Satisfactory', 'Needs Improvement'];
+  const verdict   = score >= 85 ? verdicts[0] : score >= 65 ? verdicts[1] : score >= 45 ? verdicts[2] : verdicts[3];
+  const feedbacks = [
+    'Great answer! You demonstrated solid understanding.',
+    'Good response! A bit more detail would make it even stronger.',
+    'Decent effort! Let\'s keep building on that.',
+    'Keep going — practice makes perfect!',
+  ];
+  const quickFeedback = score >= 85 ? feedbacks[0] : score >= 65 ? feedbacks[1] : score >= 45 ? feedbacks[2] : feedbacks[3];
+
   return {
     score,
-    strengths: template.strengths,
-    weaknesses: template.weaknesses,
+    verdict,
+    quickFeedback,
+    strengths:       template.strengths,
+    weaknesses:      template.weaknesses,
     suggestedAnswer: template.suggestedAnswer,
     breakdown: {
       content:       Math.min(score + Math.floor(Math.random() * 10) - 5, 100),

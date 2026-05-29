@@ -162,9 +162,33 @@ Respond ONLY with this JSON:
 
   try {
     const rawText = await callEvalAI(messages, systemMsg + '\n' + userMsg);
-    const cleaned = rawText.replace(/```json|```/g, '').trim();
-    console.log(`✅ Eval AI: answer scored via ${MODEL_EVAL}`);
-    return JSON.parse(cleaned);
+
+    // Extract JSON even if model wraps it in markdown or extra text
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON found in response');
+
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    // Sanitize: detect error-like responses the model accidentally puts in fields
+    const looksLikeError = (s) => typeof s === 'string' &&
+      /(sorry|trouble processing|try again|cannot process|i apologize)/i.test(s);
+
+    const verdicts = ['Excellent', 'Good', 'Satisfactory', 'Needs Improvement', 'Incorrect'];
+    const score = (typeof parsed.score === 'number' && parsed.score >= 0 && parsed.score <= 100)
+      ? parsed.score : 65;
+
+    const result = {
+      score,
+      verdict:         verdicts.includes(parsed.verdict) ? parsed.verdict : (score >= 80 ? 'Good' : 'Satisfactory'),
+      quickFeedback:   looksLikeError(parsed.quickFeedback)  ? 'Good effort! Keep going.' : (parsed.quickFeedback  || 'Good effort! Keep going.'),
+      breakdown:       parsed.breakdown || { content: score, communication: score, confidence: score },
+      strengths:       Array.isArray(parsed.strengths)  ? parsed.strengths  : ['Showed understanding of the topic'],
+      weaknesses:      Array.isArray(parsed.weaknesses) ? parsed.weaknesses : ['Could elaborate more'],
+      suggestedAnswer: looksLikeError(parsed.suggestedAnswer) ? '' : (parsed.suggestedAnswer || ''),
+    };
+
+    console.log(`✅ Eval AI: score=${result.score} [${result.verdict}] via ${MODEL_EVAL}`);
+    return result;
   } catch (err) {
     console.error('❌ Eval AI failed:', err.response?.data || err.message);
     return mockEvaluate(question, answer, type, domain, questionIndex);
