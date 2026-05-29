@@ -1,42 +1,35 @@
 import axios from 'axios';
 import { generateQuestion as mockQuestion, evaluateAnswer as mockEvaluate } from './mockAI.js';
 
-const USE_MOCK      = process.env.USE_MOCK_AI === 'true';
-const NVIDIA_KEY    = process.env.NVIDIA_API_KEY?.startsWith('nvapi-')  ? process.env.NVIDIA_API_KEY   : null;
-const NVIDIA_KEY_2  = process.env.NVIDIA_API_KEY_2?.startsWith('nvapi-') ? process.env.NVIDIA_API_KEY_2 : null;
-const OPENAI_KEY    = process.env.OPENAI_API_KEY?.startsWith('sk-')     ? process.env.OPENAI_API_KEY   : null;
-const GEMINI_KEY    = process.env.GEMINI_API_KEY?.startsWith('AI')      ? process.env.GEMINI_API_KEY   : null;
-const MODEL         = process.env.OPENAI_MODEL  || 'gpt-4o-mini';
-const NVIDIA_MODEL  = process.env.NVIDIA_MODEL  || 'meta/llama-3.1-70b-instruct';
+const USE_MOCK = process.env.USE_MOCK_AI === 'true';
+const NVIDIA_KEY  = process.env.NVIDIA_API_KEY?.startsWith('nvapi-') ? process.env.NVIDIA_API_KEY : null;
+const OPENAI_KEY  = process.env.OPENAI_API_KEY?.startsWith('sk-')    ? process.env.OPENAI_API_KEY  : null;
+const GEMINI_KEY  = process.env.GEMINI_API_KEY?.startsWith('AI')     ? process.env.GEMINI_API_KEY  : null;
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+
+// Two separate models — question generator vs evaluator run in parallel without conflicting
+const MODEL_QUESTIONS = process.env.NVIDIA_MODEL      || 'meta/llama-3.1-8b-instruct';
+const MODEL_EVAL      = process.env.NVIDIA_MODEL_EVAL || 'mistralai/mistral-7b-instruct-v0.3';
 
 const hasRealAI = () => !USE_MOCK && !!(NVIDIA_KEY || OPENAI_KEY || GEMINI_KEY);
 
-if (NVIDIA_KEY)      console.log(`🤖 Q-Engine  : NVIDIA NIM (${NVIDIA_MODEL}) [key-1]`);
-if (NVIDIA_KEY_2)    console.log(`🤖 Eval-Engine: NVIDIA NIM (${NVIDIA_MODEL}) [key-2]`);
-else if (OPENAI_KEY) console.log(`🤖 AI Engine: OpenAI (${MODEL})`);
-else if (GEMINI_KEY) console.log('🤖 AI Engine: Google Gemini');
-else                 console.log('🤖 AI Engine: Mock (no valid API key found)');
+if (NVIDIA_KEY) {
+  console.log(`🤖 Question AI : NVIDIA NIM (${MODEL_QUESTIONS})`);
+  console.log(`🤖 Evaluate AI : NVIDIA NIM (${MODEL_EVAL})`);
+} else if (OPENAI_KEY) console.log(`🤖 AI Engine: OpenAI (${OPENAI_MODEL})`);
+else if (GEMINI_KEY)   console.log('🤖 AI Engine: Google Gemini');
+else                   console.log('🤖 AI Engine: Mock (no valid API key)');
 
-// ─── NVIDIA NIM caller (with retry, accepts explicit key) ──────────────────
-async function callNvidia(messages, apiKey, retries = 2) {
-  const key = apiKey || NVIDIA_KEY;
+// ─── NVIDIA caller — accepts which model to use ───────────────────────────────
+async function callNvidia(messages, model, retries = 2) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const res = await axios.post(
         'https://integrate.api.nvidia.com/v1/chat/completions',
-        {
-          model: NVIDIA_MODEL,
-          messages,
-          temperature: 0.7,
-          max_tokens: 400,
-          stream: false,
-        },
+        { model, messages, temperature: 0.7, max_tokens: 500, stream: false },
         {
           timeout: 30000,
-          headers: {
-            Authorization: `Bearer ${key}`,
-            'Content-Type': 'application/json',
-          },
+          headers: { Authorization: `Bearer ${NVIDIA_KEY}`, 'Content-Type': 'application/json' },
         }
       );
       return res.data.choices[0].message.content;
@@ -52,11 +45,11 @@ async function callNvidia(messages, apiKey, retries = 2) {
   }
 }
 
-// ─── OpenAI ─────────────────────────────────────────────────────────────────
+// ─── OpenAI ──────────────────────────────────────────────────────────────────
 async function callOpenAI(messages) {
   const res = await axios.post(
     'https://api.openai.com/v1/chat/completions',
-    { model: MODEL, messages, temperature: 0.7, max_tokens: 600 },
+    { model: OPENAI_MODEL, messages, temperature: 0.7, max_tokens: 600 },
     { headers: { Authorization: `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' } }
   );
   return res.data.choices[0].message.content;
@@ -72,29 +65,25 @@ async function callGemini(prompt) {
   return res.data.candidates[0].content.parts[0].text;
 }
 
-// ─── AI caller for QUESTION GENERATION (uses NVIDIA_KEY / key-1) ─────────────
-async function callAIForQuestion(messages, plainPrompt) {
-  if (NVIDIA_KEY) return callNvidia(messages, NVIDIA_KEY);
+// ─── AI 1: Question Generator (MODEL_QUESTIONS) ───────────────────────────────
+async function callQuestionAI(messages, plainPrompt) {
+  if (NVIDIA_KEY) return callNvidia(messages, MODEL_QUESTIONS);
   if (OPENAI_KEY) return callOpenAI(messages);
   if (GEMINI_KEY) return callGemini(plainPrompt || messages.map(m => m.content).join('\n'));
   throw new Error('No AI API key configured');
 }
 
-// ─── AI caller for EVALUATION (prefers NVIDIA_KEY_2 / key-2 for parallelism) ─
-async function callAIForEval(messages, plainPrompt) {
-  // Use key-2 if available (allows parallel calls with key-1)
-  if (NVIDIA_KEY_2) return callNvidia(messages, NVIDIA_KEY_2);
-  if (NVIDIA_KEY)   return callNvidia(messages, NVIDIA_KEY);
-  if (OPENAI_KEY)   return callOpenAI(messages);
-  if (GEMINI_KEY)   return callGemini(plainPrompt || messages.map(m => m.content).join('\n'));
+// ─── AI 2: Evaluator (MODEL_EVAL — different model, runs in parallel safely) ──
+async function callEvalAI(messages, plainPrompt) {
+  if (NVIDIA_KEY) return callNvidia(messages, MODEL_EVAL);
+  if (OPENAI_KEY) return callOpenAI(messages);
+  if (GEMINI_KEY) return callGemini(plainPrompt || messages.map(m => m.content).join('\n'));
   throw new Error('No AI API key configured');
 }
 
-// ─── Question Generation ──────────────────────────────────────────────────
+// ─── Generate Question ────────────────────────────────────────────────────────
 export async function generateQuestion(type, domain, questionIndex, previousAnswers = [], isFollowUp = false, difficulty = 'intermediate') {
-  if (USE_MOCK || !hasRealAI()) {
-    return mockQuestion(type, domain, questionIndex, previousAnswers);
-  }
+  if (USE_MOCK || !hasRealAI()) return mockQuestion(type, domain, questionIndex, previousAnswers);
 
   const difficultyGuide = {
     beginner:     'Ask entry-level questions. Focus on basic syntax, definitions, and simple concepts. Use plain language. Avoid advanced terms.',
@@ -103,45 +92,40 @@ export async function generateQuestion(type, domain, questionIndex, previousAnsw
   }[difficulty] || 'Ask mid-level questions covering practical usage and problem-solving.';
 
   const contextSummary = previousAnswers.length > 0
-    ? `Previous Q&A history: ${previousAnswers.slice(-2).map(a => `Q: ${a.question} | Answer: ${a.answer} | Score: ${a.score}/100`).join('; ')}`
+    ? `Previous Q&A: ${previousAnswers.slice(-2).map(a => `Q: ${a.question} | Answer: ${a.answer} | Score: ${a.score}/100`).join('; ')}`
     : 'This is the first question.';
 
-  let systemMsg = `You are a professional technical interviewer. You are conducting a ${type} interview focused on "${domain}" at ${difficulty.toUpperCase()} difficulty.
+  let systemMsg = `You are a professional technical interviewer conducting a ${type} interview on "${domain}" at ${difficulty.toUpperCase()} level.
 ${difficultyGuide}
 ${contextSummary}
 This is question number ${questionIndex + 1}.
 Return ONLY the question text — no preamble, no numbering, no extra commentary.`;
 
   if (isFollowUp) {
-    systemMsg = `You are a professional technical interviewer conducting a ${type} interview focused on "${domain}" at ${difficulty.toUpperCase()} difficulty.
-The candidate just provided an answer that was incomplete or lacked depth.
+    systemMsg = `You are a professional technical interviewer conducting a ${type} interview on "${domain}" at ${difficulty.toUpperCase()} level.
+The candidate just gave an incomplete answer. Based on their last answer, ask a FOLLOW-UP question to probe deeper.
 ${contextSummary}
-Based on their last answer, ask a specific FOLLOW-UP question to prompt them to expand on the missing details or clarify their vague response.
-Keep it encouraging but probing. Example: "You mentioned X, but could you elaborate on Y?"
-Return ONLY the follow-up question text — no preamble, no numbering, no extra commentary.`;
+Return ONLY the follow-up question text — no preamble, no numbering.`;
   }
 
   const messages = [
     { role: 'system', content: systemMsg },
-    { role: 'user', content: 'Generate the next interview question.' },
+    { role: 'user',   content: 'Generate the next interview question.' },
   ];
 
   try {
-    const question = await callAIForQuestion(messages, systemMsg);
-    console.log(`✅ AI generated question #${questionIndex + 1} [${difficulty}]`);
+    const question = await callQuestionAI(messages, systemMsg);
+    console.log(`✅ Question AI: question #${questionIndex + 1} [${difficulty}] via ${MODEL_QUESTIONS}`);
     return { question: question.trim(), questionIndex };
   } catch (err) {
-    console.error('❌ AI question generation failed:', err.response?.data || err.message);
-    console.log('⚠️ Falling back to mock question');
+    console.error('❌ Question AI failed:', err.response?.data || err.message);
     return mockQuestion(type, domain, questionIndex, previousAnswers);
   }
 }
 
-// ─── Answer Evaluation ───────────────────────────────────────────────────────
+// ─── Evaluate Answer ──────────────────────────────────────────────────────────
 export async function evaluateAnswer(question, answer, type, domain, questionIndex) {
-  if (USE_MOCK || !hasRealAI()) {
-    return mockEvaluate(question, answer, type, domain, questionIndex);
-  }
+  if (USE_MOCK || !hasRealAI()) return mockEvaluate(question, answer, type, domain, questionIndex);
 
   const systemMsg = 'You are an encouraging interview coach. Always respond with valid JSON only — no markdown, no extra text.';
 
@@ -151,14 +135,14 @@ Context: ${type} interview on "${domain}"
 Q: "${question}"
 Answer: "${answer}"
 
-Rubric: 90-100=Perfect, 75-89=Very good, 60-74=Good(acceptable), 40-59=Partial, 0-39=Weak.
+Rubric: 90-100=Perfect, 75-89=Very good, 60-74=Good, 40-59=Partial, 0-39=Weak.
 If the main concept is correct (even if incomplete) give at least 60.
 
 Respond ONLY with this JSON:
 {
   "score": <0-100>,
   "verdict": "<Excellent|Good|Satisfactory|Needs Improvement|Incorrect>",
-  "quickFeedback": "<1 encouraging sentence the interviewer says>",
+  "quickFeedback": "<1 encouraging sentence>",
   "breakdown": { "content": <0-100>, "communication": <0-100>, "confidence": <0-100> },
   "strengths": ["<what was good>"],
   "weaknesses": ["<what to improve>"],
@@ -167,17 +151,16 @@ Respond ONLY with this JSON:
 
   const messages = [
     { role: 'system', content: systemMsg },
-    { role: 'user', content: userMsg },
+    { role: 'user',   content: userMsg },
   ];
 
   try {
-    const rawText = await callAIForEval(messages, systemMsg + '\n' + userMsg);
+    const rawText = await callEvalAI(messages, systemMsg + '\n' + userMsg);
     const cleaned = rawText.replace(/```json|```/g, '').trim();
-    console.log('✅ AI evaluation complete');
+    console.log(`✅ Eval AI: answer scored via ${MODEL_EVAL}`);
     return JSON.parse(cleaned);
   } catch (err) {
-    console.error('❌ AI evaluation failed:', err.response?.data || err.message);
-    console.log('⚠️ Falling back to mock evaluation');
+    console.error('❌ Eval AI failed:', err.response?.data || err.message);
     return mockEvaluate(question, answer, type, domain, questionIndex);
   }
 }
