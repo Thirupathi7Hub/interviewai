@@ -9,7 +9,7 @@ const MODEL_QUESTIONS = process.env.NVIDIA_MODEL      || 'meta/llama-3.1-8b-inst
 
 // AI 2 — Answer Evaluation (separate key + model for true parallel)
 const NVIDIA_KEY_2 = process.env.NVIDIA_API_KEY_2?.startsWith('nvapi-') ? process.env.NVIDIA_API_KEY_2 : null;
-const MODEL_EVAL   = process.env.NVIDIA_MODEL_EVAL   || 'google/gemma-4-31b-it';
+const MODEL_EVAL   = process.env.NVIDIA_MODEL_EVAL   || 'meta/llama-3.1-8b-instruct';
 
 // Fallback providers
 const OPENAI_KEY   = process.env.OPENAI_API_KEY?.startsWith('sk-')     ? process.env.OPENAI_API_KEY   : null;
