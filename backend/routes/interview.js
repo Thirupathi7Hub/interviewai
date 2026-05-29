@@ -37,127 +37,8 @@ router.post('/start', authMiddleware, async (req, res) => {
   }
 });
 
-// ─── POST /api/interview/evaluate ────────────────────────────────────────────
-// Step 1: Evaluate the answer only — returns feedback instantly (1 AI call)
-router.post('/evaluate', authMiddleware, async (req, res) => {
-  try {
-    const { interviewId, answer, questionIndex } = req.body;
-    if (!interviewId || answer === undefined || questionIndex === undefined)
-      return res.status(400).json({ error: 'interviewId, answer, questionIndex are required' });
-
-    const interview = await Interview.findOne({ _id: interviewId, userId: req.user.id });
-    if (!interview) return res.status(404).json({ error: 'Interview not found' });
-    if (interview.status === 'completed') return res.status(400).json({ error: 'Interview already completed' });
-
-    const currentQA = interview.qa[questionIndex];
-    if (!currentQA) return res.status(400).json({ error: 'Invalid question index' });
-
-    // ── Evaluate answer (1 AI call) ──────────────────────────────────────────
-    const evaluation = await evaluateAnswer(
-      currentQA.question, answer, interview.type, interview.domain, questionIndex
-    );
-
-    // Save answer + evaluation to DB
-    interview.qa[questionIndex].answer          = answer;
-    interview.qa[questionIndex].score           = evaluation.score;
-    interview.qa[questionIndex].strengths       = evaluation.strengths;
-    interview.qa[questionIndex].weaknesses      = evaluation.weaknesses;
-    interview.qa[questionIndex].suggestedAnswer = evaluation.suggestedAnswer;
-
-    const TOTAL_QUESTIONS = interview.totalQuestions || 5;
-    const nextIndex       = questionIndex + 1;
-    const isLast          = nextIndex >= TOTAL_QUESTIONS;
-
-    // Decide follow-up (only if not last question, score < 60, not already a follow-up)
-    const isFollowUp = !isLast && evaluation.score < 60 && !currentQA.isFollowUp;
-
-    if (isLast) {
-      // ── Finalize interview ─────────────────────────────────────────────────
-      const scores       = interview.qa.map(q => q.score || 0);
-      const finalScore   = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-      const allStrengths = interview.qa.flatMap(q => q.strengths   || []);
-      const allWeaknesses= interview.qa.flatMap(q => q.weaknesses  || []);
-
-      interview.finalScore     = finalScore;
-      interview.scoreBreakdown = evaluation.breakdown;
-      interview.strengths      = [...new Set(allStrengths)].slice(0, 4);
-      interview.improvements   = [...new Set(allWeaknesses)].slice(0, 4);
-      interview.status         = 'completed';
-      interview.completedAt    = new Date();
-      await interview.save();
-
-      return res.json({
-        evaluation,
-        isComplete: true,
-        isFollowUp: false,
-        results: {
-          interviewId: interview._id,
-          finalScore,
-          scoreBreakdown: interview.scoreBreakdown,
-          strengths:    interview.strengths,
-          improvements: interview.improvements,
-          qa:           interview.qa,
-          type:         interview.type,
-          domain:       interview.domain,
-          completedAt:  interview.completedAt,
-        },
-      });
-    }
-
-    await interview.save();
-
-    return res.json({
-      evaluation,
-      isComplete: false,
-      isFollowUp,
-      nextIndex,
-      totalQuestions: TOTAL_QUESTIONS,
-    });
-  } catch (err) {
-    console.error('Evaluate error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── POST /api/interview/next-question ────────────────────────────────────────
-// Step 2: Generate next question — call this in background while user reads feedback
-router.post('/next-question', authMiddleware, async (req, res) => {
-  try {
-    const { interviewId, nextIndex, isFollowUp = false } = req.body;
-    if (!interviewId || nextIndex === undefined)
-      return res.status(400).json({ error: 'interviewId and nextIndex are required' });
-
-    const interview = await Interview.findOne({ _id: interviewId, userId: req.user.id });
-    if (!interview) return res.status(404).json({ error: 'Interview not found' });
-
-    const difficulty = interview.qa[0]?._difficulty || 'intermediate';
-
-    const { question: nextQuestion } = await generateQuestion(
-      interview.type,
-      interview.domain,
-      nextIndex,
-      interview.qa,
-      isFollowUp,
-      difficulty
-    );
-
-    // Save the next question slot
-    interview.qa.push({ question: nextQuestion, answer: '', score: 0, isFollowUp });
-    await interview.save();
-
-    return res.json({
-      nextQuestion,
-      nextIndex,
-      totalQuestions: interview.totalQuestions,
-    });
-  } catch (err) {
-    console.error('Next-question error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // ─── POST /api/interview/answer ───────────────────────────────────────────────
-// Legacy combined endpoint (kept for compatibility) — use /evaluate + /next-question instead
+// Submit an answer, get AI evaluation + next question (or final results)
 router.post('/answer', authMiddleware, async (req, res) => {
   try {
     const { interviewId, answer, questionIndex } = req.body;
@@ -172,57 +53,87 @@ router.post('/answer', authMiddleware, async (req, res) => {
     const currentQA = interview.qa[questionIndex];
     if (!currentQA) return res.status(400).json({ error: 'Invalid question index' });
 
-    const evaluation = await evaluateAnswer(
-      currentQA.question, answer, interview.type, interview.domain, questionIndex
-    );
+    const difficulty     = interview.qa[0]?._difficulty || 'intermediate';
+    const nextIndex      = questionIndex + 1;
+    const TOTAL_QUESTIONS = interview.totalQuestions || 5;
+    const isLast         = nextIndex >= TOTAL_QUESTIONS;
 
+    // ── PARALLEL: evaluate answer + pre-generate next question simultaneously ──
+    const [evaluation, preGenResult] = await Promise.all([
+      // Key-2 (or key-1 fallback): evaluate the answer
+      evaluateAnswer(currentQA.question, answer, interview.type, interview.domain, questionIndex),
+
+      // Key-1: pre-generate next question in parallel (assume no follow-up yet)
+      !isLast
+        ? generateQuestion(interview.type, interview.domain, nextIndex, interview.qa, false, difficulty)
+        : Promise.resolve(null),
+    ]);
+
+    // Update current Q&A with evaluation results
     interview.qa[questionIndex].answer          = answer;
     interview.qa[questionIndex].score           = evaluation.score;
     interview.qa[questionIndex].strengths       = evaluation.strengths;
     interview.qa[questionIndex].weaknesses      = evaluation.weaknesses;
     interview.qa[questionIndex].suggestedAnswer = evaluation.suggestedAnswer;
 
-    const TOTAL_QUESTIONS = interview.totalQuestions || 5;
-    let isFollowUp = false;
-    if (evaluation.score < 60 && !currentQA.isFollowUp && questionIndex + 1 < TOTAL_QUESTIONS)
-      isFollowUp = true;
+    // Decide: use pre-generated question or fetch a follow-up?
+    let isFollowUp   = false;
+    let nextQuestion = preGenResult?.question;
 
-    const nextIndex = questionIndex + 1;
-    const isLast    = nextIndex >= TOTAL_QUESTIONS;
+    if (!isLast && evaluation.score < 60 && !currentQA.isFollowUp) {
+      // Score too low → discard pre-generated, get a contextual follow-up
+      isFollowUp = true;
+      console.log('🔄 Low score — generating follow-up question...');
+      const { question: fuQ } = await generateQuestion(
+        interview.type, interview.domain, nextIndex, interview.qa, true, difficulty
+      );
+      nextQuestion = fuQ;
+    }
 
     if (isLast) {
-      const scores       = interview.qa.map(q => q.score || 0);
-      const finalScore   = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-      const allStrengths = interview.qa.flatMap(q => q.strengths   || []);
-      const allWeaknesses= interview.qa.flatMap(q => q.weaknesses  || []);
-      interview.finalScore     = finalScore;
+      // Calculate final score
+      const scores = interview.qa.map(q => q.score || 0);
+      const finalScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+
+      // Aggregate strengths / improvements
+      const allStrengths   = interview.qa.flatMap(q => q.strengths   || []);
+      const allWeaknesses  = interview.qa.flatMap(q => q.weaknesses  || []);
+
+      interview.finalScore = finalScore;
       interview.scoreBreakdown = evaluation.breakdown;
-      interview.strengths      = [...new Set(allStrengths)].slice(0, 4);
-      interview.improvements   = [...new Set(allWeaknesses)].slice(0, 4);
-      interview.status         = 'completed';
-      interview.completedAt    = new Date();
+      interview.strengths    = [...new Set(allStrengths)].slice(0, 4);
+      interview.improvements = [...new Set(allWeaknesses)].slice(0, 4);
+      interview.status       = 'completed';
+      interview.completedAt  = new Date();
+
       await interview.save();
+
       return res.json({
-        evaluation, isComplete: true,
+        evaluation,
+        isComplete: true,
         results: {
-          interviewId: interview._id, finalScore,
+          interviewId: interview._id,
+          finalScore,
           scoreBreakdown: interview.scoreBreakdown,
-          strengths: interview.strengths, improvements: interview.improvements,
-          qa: interview.qa, type: interview.type, domain: interview.domain,
+          strengths:    interview.strengths,
+          improvements: interview.improvements,
+          qa: interview.qa,
+          type: interview.type,
+          domain: interview.domain,
           completedAt: interview.completedAt,
         },
       });
     }
 
-    const difficulty = interview.qa[0]?._difficulty || 'intermediate';
-    const { question: nextQuestion } = await generateQuestion(
-      interview.type, interview.domain, nextIndex, interview.qa, isFollowUp, difficulty
-    );
+    // Append next question slot (nextQuestion already resolved by Promise.all above)
     interview.qa.push({ question: nextQuestion, answer: '', score: 0, isFollowUp });
     await interview.save();
 
     res.json({
-      evaluation, isComplete: false, nextQuestion, nextIndex,
+      evaluation,
+      isComplete: false,
+      nextQuestion,
+      nextIndex,
       totalQuestions: TOTAL_QUESTIONS,
       progress: { current: nextIndex + 1, total: TOTAL_QUESTIONS },
     });
