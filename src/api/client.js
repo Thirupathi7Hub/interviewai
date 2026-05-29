@@ -1,10 +1,9 @@
 import axios from 'axios';
 
-// In production (Render), VITE_API_URL = https://your-backend.onrender.com
-// In dev, falls back to /api which is proxied by Vite to localhost:5001
-const BASE_URL = import.meta.env.VITE_API_URL
-  ? `${import.meta.env.VITE_API_URL}/api`
-  : '/api';
+// Strip trailing slash to prevent double-slash URLs
+const API_ROOT = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+
+const BASE_URL = API_ROOT ? `${API_ROOT}/api` : '/api';
 
 const client = axios.create({
   baseURL: BASE_URL,
@@ -33,9 +32,7 @@ client.interceptors.response.use(
 
 // We need a separate client for /auth endpoints if we want to stick to the same base url convention or just use absolute path.
 export const authClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL
-    ? `${import.meta.env.VITE_API_URL}/auth`
-    : '/auth',
+  baseURL: API_ROOT ? `${API_ROOT}/auth` : '/auth',
 });
 
 export default client;
