@@ -2,26 +2,31 @@ import axios from 'axios';
 import { generateQuestion as mockQuestion, evaluateAnswer as mockEvaluate } from './mockAI.js';
 
 const USE_MOCK = process.env.USE_MOCK_AI === 'true';
-const NVIDIA_KEY  = process.env.NVIDIA_API_KEY?.startsWith('nvapi-') ? process.env.NVIDIA_API_KEY : null;
-const OPENAI_KEY  = process.env.OPENAI_API_KEY?.startsWith('sk-')    ? process.env.OPENAI_API_KEY  : null;
-const GEMINI_KEY  = process.env.GEMINI_API_KEY?.startsWith('AI')     ? process.env.GEMINI_API_KEY  : null;
-const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
-// Two separate models — question generator vs evaluator run in parallel without conflicting
+// AI 1 — Question Generation
+const NVIDIA_KEY   = process.env.NVIDIA_API_KEY?.startsWith('nvapi-')  ? process.env.NVIDIA_API_KEY  : null;
 const MODEL_QUESTIONS = process.env.NVIDIA_MODEL      || 'meta/llama-3.1-8b-instruct';
-const MODEL_EVAL      = process.env.NVIDIA_MODEL_EVAL || 'mistralai/mistral-7b-instruct-v0.3';
+
+// AI 2 — Answer Evaluation (separate key + model for true parallel)
+const NVIDIA_KEY_2 = process.env.NVIDIA_API_KEY_2?.startsWith('nvapi-') ? process.env.NVIDIA_API_KEY_2 : null;
+const MODEL_EVAL   = process.env.NVIDIA_MODEL_EVAL   || 'google/gemma-4-31b-it';
+
+// Fallback providers
+const OPENAI_KEY   = process.env.OPENAI_API_KEY?.startsWith('sk-')     ? process.env.OPENAI_API_KEY   : null;
+const GEMINI_KEY   = process.env.GEMINI_API_KEY?.startsWith('AI')      ? process.env.GEMINI_API_KEY   : null;
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
 const hasRealAI = () => !USE_MOCK && !!(NVIDIA_KEY || OPENAI_KEY || GEMINI_KEY);
 
-if (NVIDIA_KEY) {
-  console.log(`🤖 Question AI : NVIDIA NIM (${MODEL_QUESTIONS})`);
-  console.log(`🤖 Evaluate AI : NVIDIA NIM (${MODEL_EVAL})`);
-} else if (OPENAI_KEY) console.log(`🤖 AI Engine: OpenAI (${OPENAI_MODEL})`);
-else if (GEMINI_KEY)   console.log('🤖 AI Engine: Google Gemini');
-else                   console.log('🤖 AI Engine: Mock (no valid API key)');
+if (NVIDIA_KEY)   console.log(`🤖 Question AI : NVIDIA (${MODEL_QUESTIONS}) key-1`);
+if (NVIDIA_KEY_2) console.log(`🤖 Eval AI     : NVIDIA (${MODEL_EVAL}) key-2`);
+else if (NVIDIA_KEY) console.log(`🤖 Eval AI     : NVIDIA (${MODEL_EVAL}) key-1 (shared)`);
+else if (OPENAI_KEY) console.log(`🤖 Fallback    : OpenAI (${OPENAI_MODEL})`);
+else if (GEMINI_KEY) console.log('🤖 Fallback    : Google Gemini');
+else                 console.log('🤖 AI Engine   : Mock (no valid API key)');
 
-// ─── NVIDIA caller — accepts which model to use ───────────────────────────────
-async function callNvidia(messages, model, retries = 2) {
+// ─── NVIDIA caller — accepts key + model ─────────────────────────────────────
+async function callNvidia(messages, model, apiKey, retries = 2) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const res = await axios.post(
@@ -29,7 +34,7 @@ async function callNvidia(messages, model, retries = 2) {
         { model, messages, temperature: 0.7, max_tokens: 500, stream: false },
         {
           timeout: 30000,
-          headers: { Authorization: `Bearer ${NVIDIA_KEY}`, 'Content-Type': 'application/json' },
+          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         }
       );
       return res.data.choices[0].message.content;
@@ -65,17 +70,18 @@ async function callGemini(prompt) {
   return res.data.candidates[0].content.parts[0].text;
 }
 
-// ─── AI 1: Question Generator (MODEL_QUESTIONS) ───────────────────────────────
+// ─── AI 1: Questions — uses NVIDIA_KEY + MODEL_QUESTIONS ─────────────────────
 async function callQuestionAI(messages, plainPrompt) {
-  if (NVIDIA_KEY) return callNvidia(messages, MODEL_QUESTIONS);
+  if (NVIDIA_KEY) return callNvidia(messages, MODEL_QUESTIONS, NVIDIA_KEY);
   if (OPENAI_KEY) return callOpenAI(messages);
   if (GEMINI_KEY) return callGemini(plainPrompt || messages.map(m => m.content).join('\n'));
   throw new Error('No AI API key configured');
 }
 
-// ─── AI 2: Evaluator (MODEL_EVAL — different model, runs in parallel safely) ──
+// ─── AI 2: Evaluation — uses NVIDIA_KEY_2 + MODEL_EVAL (separate, parallel-safe)
 async function callEvalAI(messages, plainPrompt) {
-  if (NVIDIA_KEY) return callNvidia(messages, MODEL_EVAL);
+  const key = NVIDIA_KEY_2 || NVIDIA_KEY;   // prefer key-2, fall back to key-1
+  if (key) return callNvidia(messages, MODEL_EVAL, key);
   if (OPENAI_KEY) return callOpenAI(messages);
   if (GEMINI_KEY) return callGemini(plainPrompt || messages.map(m => m.content).join('\n'));
   throw new Error('No AI API key configured');
