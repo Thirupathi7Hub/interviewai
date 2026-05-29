@@ -59,7 +59,7 @@ router.post('/answer', authMiddleware, async (req, res) => {
     const isLast         = nextIndex >= TOTAL_QUESTIONS;
 
     // ── PARALLEL: evaluate answer + pre-generate next question simultaneously ──
-    const [evaluation, preGenResult] = await Promise.all([
+    const [evalResult, preGenResult] = await Promise.allSettled([
       // Key-2 (or key-1 fallback): evaluate the answer
       evaluateAnswer(currentQA.question, answer, interview.type, interview.domain, questionIndex),
 
@@ -68,6 +68,16 @@ router.post('/answer', authMiddleware, async (req, res) => {
         ? generateQuestion(interview.type, interview.domain, nextIndex, interview.qa, false, difficulty)
         : Promise.resolve(null),
     ]);
+
+    // Extract results with fallbacks if either AI call failed
+    const evaluation = evalResult.status === 'fulfilled'
+      ? evalResult.value
+      : { score: 50, verdict: 'Satisfactory', quickFeedback: 'Keep going!', breakdown: { content: 50, communication: 50, confidence: 50 }, strengths: [], weaknesses: [], suggestedAnswer: '' };
+
+    const preGen = preGenResult.status === 'fulfilled' ? preGenResult.value : null;
+
+    if (evalResult.status === 'rejected')  console.warn('⚠️ Eval AI failed, using fallback:', evalResult.reason?.message);
+    if (preGenResult.status === 'rejected') console.warn('⚠️ Question AI failed, using fallback:', preGenResult.reason?.message);
 
     // Update current Q&A with evaluation results
     interview.qa[questionIndex].answer          = answer;
@@ -78,16 +88,26 @@ router.post('/answer', authMiddleware, async (req, res) => {
 
     // Decide: use pre-generated question or fetch a follow-up?
     let isFollowUp   = false;
-    let nextQuestion = preGenResult?.question;
+    let nextQuestion = preGen?.question;
 
     if (!isLast && evaluation.score < 60 && !currentQA.isFollowUp) {
-      // Score too low → discard pre-generated, get a contextual follow-up
       isFollowUp = true;
       console.log('🔄 Low score — generating follow-up question...');
-      const { question: fuQ } = await generateQuestion(
-        interview.type, interview.domain, nextIndex, interview.qa, true, difficulty
-      );
-      nextQuestion = fuQ;
+      try {
+        const { question: fuQ } = await generateQuestion(
+          interview.type, interview.domain, nextIndex, interview.qa, true, difficulty
+        );
+        nextQuestion = fuQ;
+      } catch {
+        nextQuestion = nextQuestion || `Could you elaborate more on your previous answer?`;
+      }
+    }
+
+    // Final safety net: if question is still null, generate one more time
+    if (!isLast && !nextQuestion) {
+      nextQuestion = await generateQuestion(interview.type, interview.domain, nextIndex, interview.qa, false, difficulty)
+        .then(r => r.question)
+        .catch(() => `Tell me more about your experience with ${interview.domain}.`);
     }
 
     if (isLast) {

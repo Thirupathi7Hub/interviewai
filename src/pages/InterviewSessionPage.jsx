@@ -23,7 +23,7 @@ function useTimer(initial = 0) {
 
 export default function InterviewSessionPage() {
   const navigate = useNavigate();
-  const { activeSession, activeSessionRef, submitAnswer, advanceToNextQuestion, endInterviewEarly } = useInterview();
+  const { activeSession, activeSessionRef, submitAnswer, endInterviewEarly } = useInterview();
 
   // Guard: redirect to /select if no active session — but NOT while ending (race condition)
   const isEndingRef = useRef(false);
@@ -246,6 +246,17 @@ export default function InterviewSessionPage() {
     if (!input.trim() || typing) return;
     
     // Stop listening if we submit
+    const trimmed = input.trim();
+    const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
+    if (wordCount < 3) {
+      setMessages(m => [...m, {
+        id: Date.now() + 1, role: 'ai',
+        content: '💬 Please provide a more detailed answer (at least a few words) so I can give you proper feedback.',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }]);
+      return;
+    }
+
     if (isListening) {
       recognitionRef.current?.stop();
       setIsListening(false);
@@ -260,12 +271,10 @@ export default function InterviewSessionPage() {
     setQuickFeedback(null);
 
     try {
-      // STEP 1: Evaluate answer — returns fast (1 AI call)
-      // Next-question fetch fires in background automatically
       const res = await submitAnswer(userMsg.content);
       const aiTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-      // Show quick feedback overlay
+      // Show quick feedback overlay from evaluation
       if (res.evaluation) {
         const fb = res.evaluation;
         setQuickFeedback({
@@ -273,6 +282,7 @@ export default function InterviewSessionPage() {
           text: fb.quickFeedback || (fb.score >= 60 ? 'Good answer! You covered the key concept.' : 'Keep going, you are on the right track!'),
           score: fb.score,
         });
+        // Auto-dismiss after 4 seconds
         setTimeout(() => setQuickFeedback(null), 4000);
       }
       
@@ -280,14 +290,7 @@ export default function InterviewSessionPage() {
         setMessages(m => [...m, { id: Date.now() + 1, role: 'ai', content: "Thank you! That concludes our interview. I'll now generate your feedback report.", time: aiTime }]);
         setTimeout(() => navigate('/feedback'), 3000);
       } else {
-        // STEP 2: Await the background next-question fetch (usually already done)
-        setMessages(m => [...m, { id: Date.now() + 1, role: 'ai', content: '⏳ Loading next question...', time: aiTime, isLoading: true }]);
-        const nextQ = await advanceToNextQuestion();
-        const nextTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        setMessages(m => [
-          ...m.filter(msg => !msg.isLoading),
-          { id: Date.now() + 2, role: 'ai', content: nextQ, time: nextTime },
-        ]);
+        setMessages(m => [...m, { id: Date.now() + 1, role: 'ai', content: res.nextQuestion, time: aiTime }]);
       }
     } catch (err) {
       console.error(err);
