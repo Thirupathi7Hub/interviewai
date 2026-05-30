@@ -28,11 +28,22 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '5mb' }));        // 5mb for base64 avatar uploads
 app.use(express.urlencoded({ limit: '5mb', extended: true }));
-app.use(session({
-  secret:            process.env.SESSION_SECRET || 'dev_secret',
-  resave:            false,
-  saveUninitialized: false,
-}));
+// Session only needed for OAuth flow — use minimal config in production (JWT handles auth)
+if (process.env.NODE_ENV !== 'production') {
+  app.use(session({
+    secret:            process.env.SESSION_SECRET || 'dev_secret',
+    resave:            false,
+    saveUninitialized: false,
+  }));
+} else {
+  // In production, use session with explicit store to silence MemoryStore warning
+  app.use(session({
+    secret:            process.env.SESSION_SECRET || 'prod_secret',
+    resave:            false,
+    saveUninitialized: false,
+    cookie:            { secure: true, sameSite: 'none' },
+  }));
+}
 
 // ─── Google OAuth (Passport) ─────────────────────────────────────────────────
 passport.use(new GoogleStrategy(
