@@ -11,7 +11,7 @@ const SCORE_RECOVER        = 0.4;   // points recovered per clean frame
 const SCORE_PENALTY_WARN   = 3;     // points lost per minor warning
 const SCORE_PENALTY_VIOL   = 18;    // points lost per hard violation
 
-export function useProctoring({ videoRef, enabled }) {
+export function useProctoring({ videoRef, enabled, cameraActive = true }) {
   const [confidenceScore, setConfidenceScore] = useState(100);
   const [alert, setAlert]                     = useState(null); // { message, type: 'warning'|'danger' }
   const [violationCount, setViolationCount]   = useState(0);
@@ -70,7 +70,8 @@ export function useProctoring({ videoRef, enabled }) {
   // ── Per-frame analysis ──────────────────────────────────────────────────────
   const analyzeFrame = useCallback(async () => {
     const video = videoRef.current;
-    if (!video || video.readyState < 2 || !detectorRef.current) return;
+    // Skip face analysis if camera is off or video not ready
+    if (!cameraActive || !video || video.readyState < 2 || !detectorRef.current) return;
 
     const now = Date.now();
     let faces = [];

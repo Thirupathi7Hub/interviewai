@@ -49,11 +49,13 @@ export default function InterviewSessionPage() {
   const timer          = useTimer(0);
   const recognitionRef = useRef(null);
 
-  // ── Real-time proctoring ─────────────────────────────────────────────────
-  const proctoringEnabled = !!aiCharacter && cameraOn;
+  // Tab-switch proctoring always on once interview starts
+  // Face/camera proctoring only when camera is active
+  const proctoringEnabled = !!aiCharacter;   // ← was: !!aiCharacter && cameraOn
   const { confidenceScore, alert: proctoringAlert, violationCount, shouldEnd } = useProctoring({
     videoRef,
     enabled: proctoringEnabled,
+    cameraActive: cameraOn,    // ← new prop to control face analysis separately
   });
 
   // Auto-end session when proctoring terminates it
