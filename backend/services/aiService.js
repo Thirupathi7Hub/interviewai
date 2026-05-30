@@ -28,7 +28,7 @@ async function callNvidia(messages, apiKey, retries = 2) {
           model: NVIDIA_MODEL,
           messages,
           temperature: 0.7,
-          max_tokens: 400,
+          max_tokens: 180,   // questions are short — 180 tokens is plenty, faster response
           stream: false,
         },
         {
