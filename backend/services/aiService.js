@@ -7,7 +7,7 @@ const NVIDIA_KEY_2 = process.env.NVIDIA_API_KEY_2?.startsWith('nvapi-') ? proces
 const OPENAI_KEY = process.env.OPENAI_API_KEY?.startsWith('sk-') ? process.env.OPENAI_API_KEY : null;
 const GEMINI_KEY = process.env.GEMINI_API_KEY?.startsWith('AI') ? process.env.GEMINI_API_KEY : null;
 const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-const NVIDIA_MODEL = process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct';
+const NVIDIA_MODEL = process.env.NVIDIA_MODEL || 'stepfun-ai/Step-3.7-Flash';
 
 const hasRealAI = () => !USE_MOCK && !!(NVIDIA_KEY || OPENAI_KEY || GEMINI_KEY);
 
@@ -17,8 +17,8 @@ else if (OPENAI_KEY) console.log(`🤖 AI Engine: OpenAI (${MODEL})`);
 else if (GEMINI_KEY) console.log('🤖 AI Engine: Google Gemini');
 else console.log('🤖 AI Engine: Mock (no valid API key found)');
 
-// ─── NVIDIA NIM caller (with retry, accepts explicit key and token limit) ──────
-async function callNvidia(messages, apiKey, retries = 2, maxTokens = 180) {
+// ─── NVIDIA NIM caller (with retry, accepts explicit key) ──────────────────
+async function callNvidia(messages, apiKey, retries = 2) {
   const key = apiKey || NVIDIA_KEY;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -28,7 +28,7 @@ async function callNvidia(messages, apiKey, retries = 2, maxTokens = 180) {
           model: NVIDIA_MODEL,
           messages,
           temperature: 0.7,
-          max_tokens: maxTokens,
+          max_tokens: 400,
           stream: false,
         },
         {
@@ -80,11 +80,11 @@ async function callAIForQuestion(messages, plainPrompt) {
   throw new Error('No AI API key configured');
 }
 
-// ─── AI caller for EVALUATION (uses 750 tokens — full JSON needs more space) ──
+// ─── AI caller for EVALUATION (prefers NVIDIA_KEY_2 / key-2 for parallelism) ─
 async function callAIForEval(messages, plainPrompt) {
-  const EVAL_TOKENS = 750; // evaluation JSON is large — needs plenty of space
-  if (NVIDIA_KEY_2) return callNvidia(messages, NVIDIA_KEY_2, 2, EVAL_TOKENS);
-  if (NVIDIA_KEY)   return callNvidia(messages, NVIDIA_KEY,   2, EVAL_TOKENS);
+  // Use key-2 if available (allows parallel calls with key-1)
+  if (NVIDIA_KEY_2) return callNvidia(messages, NVIDIA_KEY_2);
+  if (NVIDIA_KEY) return callNvidia(messages, NVIDIA_KEY);
   if (OPENAI_KEY) return callOpenAI(messages);
   if (GEMINI_KEY) return callGemini(plainPrompt || messages.map(m => m.content).join('\n'));
   throw new Error('No AI API key configured');
@@ -143,40 +143,26 @@ export async function evaluateAnswer(question, answer, type, domain, questionInd
     return mockEvaluate(question, answer, type, domain, questionIndex);
   }
 
-  const systemMsg = 'You are a strict but fair technical interview evaluator. Always respond with valid JSON only — no markdown, no extra text, no explanation outside JSON.';
+  const systemMsg = 'You are an encouraging interview coach. Always respond with valid JSON only — no markdown, no extra text.';
 
-  const userMsg = `Evaluate this technical interview answer precisely.
+  const userMsg = `Evaluate this interview answer.
 
-Interview type: ${type}
-Domain: ${domain}
-Question: "${question}"
-Candidate's Answer: "${answer}"
+Context: ${type} interview on "${domain}"
+Q: "${question}"
+Answer: "${answer}"
 
-Scoring Rubric (be strict and accurate):
-- 90-100: Perfect — complete, accurate, uses correct terminology, well-explained
-- 75-89:  Very good — mostly correct, minor gaps or imprecise phrasing  
-- 60-74:  Acceptable — core concept correct but lacks depth or examples
-- 40-59:  Partial — shows some understanding but significant gaps or errors
-- 20-39:  Weak — vague, mostly incorrect, or largely irrelevant answer
-- 0-19:   Wrong or no meaningful answer given
+Rubric: 90-100=Perfect, 75-89=Very good, 60-74=Good(acceptable), 40-59=Partial, 0-39=Weak.
+If the main concept is correct (even if incomplete) give at least 60.
 
-Important rules:
-- Do NOT automatically give 60+ for partial answers. Judge strictly.
-- A one-word or one-sentence answer that misses key concepts should score 20-40.
-- Only give 90+ if the answer is genuinely comprehensive and technically accurate.
-- The "suggestedAnswer" must be a concise model answer a senior engineer would give (2-3 sentences).
-- "quickFeedback" is one natural sentence the interviewer would say out loud.
-- "strengths" and "weaknesses" must be specific to THIS answer, not generic.
-
-Respond ONLY with this exact JSON (no markdown, no extra text):
+Respond ONLY with this JSON:
 {
   "score": <0-100>,
   "verdict": "<Excellent|Good|Satisfactory|Needs Improvement|Incorrect>",
-  "quickFeedback": "<1 sentence the interviewer says — honest but encouraging>",
+  "quickFeedback": "<1 encouraging sentence the interviewer says>",
   "breakdown": { "content": <0-100>, "communication": <0-100>, "confidence": <0-100> },
-  "strengths": ["<specific thing the candidate did well>"],
-  "weaknesses": ["<specific gap or error in their answer>"],
-  "suggestedAnswer": "<ideal 2-3 sentence answer a senior engineer would give>"
+  "strengths": ["<what was good>"],
+  "weaknesses": ["<what to improve>"],
+  "suggestedAnswer": "<ideal answer in 2-3 sentences>"
 }`;
 
   const messages = [
