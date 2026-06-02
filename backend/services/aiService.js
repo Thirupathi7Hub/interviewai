@@ -7,7 +7,7 @@ const NVIDIA_KEY_2 = process.env.NVIDIA_API_KEY_2?.startsWith('nvapi-') ? proces
 const OPENAI_KEY = process.env.OPENAI_API_KEY?.startsWith('sk-') ? process.env.OPENAI_API_KEY : null;
 const GEMINI_KEY = process.env.GEMINI_API_KEY?.startsWith('AI') ? process.env.GEMINI_API_KEY : null;
 const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-const NVIDIA_MODEL = process.env.NVIDIA_MODEL || 'stepfun-ai/Step-3.7-Flash';
+const NVIDIA_MODEL = process.env.NVIDIA_MODEL || 'meta/llama-3.1-8b-instruct';
 
 const hasRealAI = () => !USE_MOCK && !!(NVIDIA_KEY || OPENAI_KEY || GEMINI_KEY);
 
@@ -18,7 +18,7 @@ else if (GEMINI_KEY) console.log('🤖 AI Engine: Google Gemini');
 else console.log('🤖 AI Engine: Mock (no valid API key found)');
 
 // ─── NVIDIA NIM caller (with retry, accepts explicit key) ──────────────────
-async function callNvidia(messages, apiKey, retries = 2) {
+async function callNvidia(messages, apiKey, retries = 2, maxTokens = 150) {
   const key = apiKey || NVIDIA_KEY;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -28,7 +28,7 @@ async function callNvidia(messages, apiKey, retries = 2) {
           model: NVIDIA_MODEL,
           messages,
           temperature: 0.7,
-          max_tokens: 400,
+          max_tokens: maxTokens,
           stream: false,
         },
         {
@@ -72,21 +72,20 @@ async function callGemini(prompt) {
   return res.data.candidates[0].content.parts[0].text;
 }
 
-// ─── AI caller for QUESTION GENERATION (uses NVIDIA_KEY / key-1) ─────────────
+// ─── AI caller for QUESTION GENERATION (fast: low token limit) ───────────────
 async function callAIForQuestion(messages, plainPrompt) {
-  if (NVIDIA_KEY) return callNvidia(messages, NVIDIA_KEY);
+  if (NVIDIA_KEY) return callNvidia(messages, NVIDIA_KEY, 2, 150);  // 150 tokens = fast
   if (OPENAI_KEY) return callOpenAI(messages);
   if (GEMINI_KEY) return callGemini(plainPrompt || messages.map(m => m.content).join('\n'));
   throw new Error('No AI API key configured');
 }
 
-// ─── AI caller for EVALUATION (prefers NVIDIA_KEY_2 / key-2 for parallelism) ─
+// ─── AI caller for EVALUATION (needs more tokens for JSON output) ─────────────
 async function callAIForEval(messages, plainPrompt) {
-  // Use key-2 if available (allows parallel calls with key-1)
-  if (NVIDIA_KEY_2) return callNvidia(messages, NVIDIA_KEY_2);
-  if (NVIDIA_KEY) return callNvidia(messages, NVIDIA_KEY);
-  if (OPENAI_KEY) return callOpenAI(messages);
-  if (GEMINI_KEY) return callGemini(plainPrompt || messages.map(m => m.content).join('\n'));
+  if (NVIDIA_KEY_2) return callNvidia(messages, NVIDIA_KEY_2, 2, 500);
+  if (NVIDIA_KEY)   return callNvidia(messages, NVIDIA_KEY,   2, 500);
+  if (OPENAI_KEY)   return callOpenAI(messages);
+  if (GEMINI_KEY)   return callGemini(plainPrompt || messages.map(m => m.content).join('\n'));
   throw new Error('No AI API key configured');
 }
 

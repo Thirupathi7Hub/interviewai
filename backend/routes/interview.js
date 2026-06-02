@@ -6,30 +6,14 @@ import { generateQuestion, evaluateAnswer } from '../services/aiService.js';
 const router = express.Router();
 
 // ─── POST /api/interview/start ────────────────────────────────────────────────
-// ⚡ Generates ALL questions at once — zero wait between every question
+// Create a new interview session and get the first question
 router.post('/start', authMiddleware, async (req, res) => {
   try {
     const { type, domain, totalQuestions: tq, difficulty = 'intermediate' } = req.body;
     if (!type || !domain) return res.status(400).json({ error: 'type and domain are required' });
     const totalQuestions = [5, 10, 20].includes(Number(tq)) ? Number(tq) : 5;
 
-    // Generate ALL questions in parallel at interview start
-    console.log(`⚡ Pre-generating all ${totalQuestions} questions in parallel...`);
-    const allResults = await Promise.all(
-      Array.from({ length: totalQuestions }, (_, i) =>
-        generateQuestion(type, domain, i, [], false, difficulty)
-      )
-    );
-    console.log(`✅ All ${totalQuestions} questions ready`);
-
-    // Build full qa array — all unique, all ready
-    const qa = allResults.map(({ question }, i) => ({
-      question,
-      answer:      '',
-      score:       0,
-      _difficulty: i === 0 ? difficulty : undefined, // store difficulty on Q1 for later reads
-      _prefetched: true,                             // all pre-generated
-    }));
+    const { question } = await generateQuestion(type, domain, 0, [], false, difficulty);
 
     const interview = await Interview.create({
       userId: req.user.id,
@@ -37,12 +21,12 @@ router.post('/start', authMiddleware, async (req, res) => {
       domain,
       totalQuestions,
       status: 'active',
-      qa,
+      qa: [{ question, answer: '', score: 0, _difficulty: difficulty }],  // ← store difficulty
     });
 
     res.status(201).json({
-      interviewId:   interview._id,
-      question:      qa[0].question,
+      interviewId: interview._id,
+      question,
       questionIndex: 0,
       totalQuestions,
       difficulty,
@@ -54,7 +38,7 @@ router.post('/start', authMiddleware, async (req, res) => {
 });
 
 // ─── POST /api/interview/answer ───────────────────────────────────────────────
-// ⚡ AI used ONLY for evaluation — next question already pre-generated (instant)
+// Submit an answer, get AI evaluation + next question (or final results)
 router.post('/answer', authMiddleware, async (req, res) => {
   try {
     const { interviewId, answer, questionIndex } = req.body;
@@ -69,37 +53,49 @@ router.post('/answer', authMiddleware, async (req, res) => {
     const currentQA = interview.qa[questionIndex];
     if (!currentQA) return res.status(400).json({ error: 'Invalid question index' });
 
-    const TOTAL_QUESTIONS = interview.totalQuestions || 5;
-    const nextIndex       = questionIndex + 1;
-    const isLast          = nextIndex >= TOTAL_QUESTIONS;
-    const difficulty      = interview.qa[0]?._difficulty || 'intermediate';
+    const nextIndex = questionIndex + 1;
+    const isLast = nextIndex >= TOTAL_QUESTIONS;
 
-    // ⚡ Only evaluate — no question generation needed (all pre-generated at start)
-    const evaluation = await evaluateAnswer(
-      currentQA.question, answer, interview.type, interview.domain, questionIndex
-    );
+    // Retrieve difficulty stored in first QA entry
+    const difficulty = interview.qa[0]?._difficulty || 'intermediate';
 
-    // Save evaluation to current Q&A slot
-    interview.qa[questionIndex].answer          = answer;
-    interview.qa[questionIndex].score           = evaluation.score;
-    interview.qa[questionIndex].strengths       = evaluation.strengths;
-    interview.qa[questionIndex].weaknesses      = evaluation.weaknesses;
-    interview.qa[questionIndex].suggestedAnswer = evaluation.suggestedAnswer;
-    interview.qa[questionIndex]._prefetched     = false;
+    // ⚡ Run evaluation + next question generation IN PARALLEL (cuts latency in half)
+    const parallelTasks = [evaluateAnswer(
+      currentQA.question,
+      answer,
+      interview.type,
+      interview.domain,
+      questionIndex
+    )];
+
+    if (!isLast) {
+      parallelTasks.push(generateQuestion(
+        interview.type,
+        interview.domain,
+        nextIndex,
+        interview.qa,
+        false,         // isFollowUp determined after evaluation — see below
+        difficulty
+      ));
+    }
+
+    const [evaluation, nextQResult] = await Promise.all(parallelTasks);
 
     if (isLast) {
-      // Compute final results
-      const scores        = interview.qa.map(q => q.score || 0);
-      const finalScore    = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-      const allStrengths  = interview.qa.flatMap(q => q.strengths  || []);
-      const allWeaknesses = interview.qa.flatMap(q => q.weaknesses || []);
+      // Calculate final score
+      const scores = interview.qa.map(q => q.score || 0);
+      const finalScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
 
-      interview.finalScore     = finalScore;
+      // Aggregate strengths / improvements
+      const allStrengths   = interview.qa.flatMap(q => q.strengths   || []);
+      const allWeaknesses  = interview.qa.flatMap(q => q.weaknesses  || []);
+
+      interview.finalScore = finalScore;
       interview.scoreBreakdown = evaluation.breakdown;
-      interview.strengths      = [...new Set(allStrengths)].slice(0, 4);
-      interview.improvements   = [...new Set(allWeaknesses)].slice(0, 4);
-      interview.status         = 'completed';
-      interview.completedAt    = new Date();
+      interview.strengths    = [...new Set(allStrengths)].slice(0, 4);
+      interview.improvements = [...new Set(allWeaknesses)].slice(0, 4);
+      interview.status       = 'completed';
+      interview.completedAt  = new Date();
 
       await interview.save();
 
@@ -107,42 +103,51 @@ router.post('/answer', authMiddleware, async (req, res) => {
         evaluation,
         isComplete: true,
         results: {
-          interviewId:    interview._id,
+          interviewId: interview._id,
           finalScore,
           scoreBreakdown: interview.scoreBreakdown,
-          strengths:      interview.strengths,
-          improvements:   interview.improvements,
-          qa:             interview.qa,
-          type:           interview.type,
-          domain:         interview.domain,
-          completedAt:    interview.completedAt,
+          strengths:    interview.strengths,
+          improvements: interview.improvements,
+          qa: interview.qa,
+          type: interview.type,
+          domain: interview.domain,
+          completedAt: interview.completedAt,
         },
       });
     }
 
-    // Get the next pre-generated question
-    let nextQuestion = interview.qa[nextIndex]?.question;
+    // Update current Q&A with evaluation results
+    interview.qa[questionIndex].answer          = answer;
+    interview.qa[questionIndex].score           = evaluation.score;
+    interview.qa[questionIndex].strengths       = evaluation.strengths;
+    interview.qa[questionIndex].weaknesses      = evaluation.weaknesses;
+    interview.qa[questionIndex].suggestedAnswer = evaluation.suggestedAnswer;
 
-    // If weak answer: generate a targeted follow-up to replace the next pre-generated Q
-    if (evaluation.score < 60 && !currentQA.isFollowUp) {
-      console.log(`🔄 Weak answer (${evaluation.score}) — generating follow-up for Q${nextIndex + 1}`);
+    // Use pre-generated next question (already ran in parallel)
+    // If score < 60 and not a follow-up yet, regenerate as a follow-up question
+    let isFollowUp = false;
+    let nextQuestion = nextQResult?.question;
+
+    if (evaluation.score < 60 && !currentQA.isFollowUp && nextIndex < TOTAL_QUESTIONS) {
+      isFollowUp = true;
+      // Regenerate as follow-up (short extra call, but gives targeted follow-up)
       const followUp = await generateQuestion(
         interview.type, interview.domain, nextIndex, interview.qa, true, difficulty
       );
-      nextQuestion                          = followUp.question;
-      interview.qa[nextIndex].question      = nextQuestion;
-      interview.qa[nextIndex].isFollowUp    = true;
+      nextQuestion = followUp.question;
     }
 
+    // Append next question slot
+    interview.qa.push({ question: nextQuestion, answer: '', score: 0, isFollowUp });
     await interview.save();
 
-    return res.json({
+    res.json({
       evaluation,
-      isComplete:     false,
+      isComplete: false,
       nextQuestion,
       nextIndex,
       totalQuestions: TOTAL_QUESTIONS,
-      progress:       { current: nextIndex + 1, total: TOTAL_QUESTIONS },
+      progress: { current: nextIndex + 1, total: TOTAL_QUESTIONS },
     });
   } catch (err) {
     console.error('Answer error:', err);
@@ -151,6 +156,7 @@ router.post('/answer', authMiddleware, async (req, res) => {
 });
 
 // ─── POST /api/interview/end ──────────────────────────────────────────────────
+// End an interview early and calculate results
 router.post('/end', authMiddleware, async (req, res) => {
   try {
     const { interviewId } = req.body;
@@ -158,35 +164,39 @@ router.post('/end', authMiddleware, async (req, res) => {
     if (!interview) return res.status(404).json({ error: 'Interview not found' });
     if (interview.status === 'completed') return res.status(400).json({ error: 'Already completed' });
 
-    const answeredQA    = interview.qa.filter(q => q.answer && q.answer.trim().length > 0);
-    const scores        = answeredQA.map(q => q.score || 0);
-    const finalScore    = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
-    const allStrengths  = answeredQA.flatMap(q => q.strengths  || []);
-    const allWeaknesses = answeredQA.flatMap(q => q.weaknesses || []);
+    // Calculate score for answered questions only
+    const answeredQA = interview.qa.filter(q => q.answer && q.answer.trim().length > 0);
+    const scores = answeredQA.map(q => q.score || 0);
+    const finalScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
 
-    interview.finalScore     = finalScore;
+    const allStrengths   = answeredQA.flatMap(q => q.strengths   || []);
+    const allWeaknesses  = answeredQA.flatMap(q => q.weaknesses  || []);
+
+    // Set fallback breakdown if empty
+    interview.finalScore = finalScore;
     interview.scoreBreakdown = interview.scoreBreakdown || { content: finalScore, communication: finalScore, confidence: finalScore };
-    interview.strengths      = [...new Set(allStrengths)].slice(0, 4);
-    if (interview.strengths.length === 0) interview.strengths = ['Completed interview early'];
-    interview.improvements   = [...new Set(allWeaknesses)].slice(0, 4);
-    if (interview.improvements.length === 0) interview.improvements = ['Answer more questions to get detailed feedback'];
-    interview.status         = 'completed';
-    interview.completedAt    = new Date();
+    interview.strengths    = [...new Set(allStrengths)].slice(0, 4);
+    if (interview.strengths.length === 0) interview.strengths = ["Completed interview early"];
+    interview.improvements = [...new Set(allWeaknesses)].slice(0, 4);
+    if (interview.improvements.length === 0) interview.improvements = ["Answer more questions to get detailed feedback"];
+    
+    interview.status       = 'completed';
+    interview.completedAt  = new Date();
 
     await interview.save();
 
     res.json({
       isComplete: true,
       results: {
-        interviewId:    interview._id,
+        interviewId: interview._id,
         finalScore,
         scoreBreakdown: interview.scoreBreakdown,
-        strengths:      interview.strengths,
-        improvements:   interview.improvements,
-        qa:             interview.qa,
-        type:           interview.type,
-        domain:         interview.domain,
-        completedAt:    interview.completedAt,
+        strengths:    interview.strengths,
+        improvements: interview.improvements,
+        qa: interview.qa,
+        type: interview.type,
+        domain: interview.domain,
+        completedAt: interview.completedAt,
       },
     });
   } catch (err) {
