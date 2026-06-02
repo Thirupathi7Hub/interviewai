@@ -53,6 +53,7 @@ router.post('/answer', authMiddleware, async (req, res) => {
     const currentQA = interview.qa[questionIndex];
     if (!currentQA) return res.status(400).json({ error: 'Invalid question index' });
 
+    const TOTAL_QUESTIONS = interview.totalQuestions || 5;
     const nextIndex = questionIndex + 1;
     const isLast = nextIndex >= TOTAL_QUESTIONS;
 
