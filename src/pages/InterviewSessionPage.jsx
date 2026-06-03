@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useInterview } from '../context/InterviewContext';
 import { useProctoring } from '../hooks/useProctoring';
+import { useAIConfidence } from '../hooks/useAIConfidence';
 import ProctoringOverlay from '../components/ProctoringOverlay';
 
 function useTimer(initial = 0) {
@@ -49,13 +50,17 @@ export default function InterviewSessionPage() {
   const timer          = useTimer(0);
   const recognitionRef = useRef(null);
 
-  // Tab-switch proctoring always on once interview starts
-  // Face/camera proctoring only when camera is active
-  const proctoringEnabled = !!aiCharacter;   // ← was: !!aiCharacter && cameraOn
+  // ── Real-time proctoring (heuristic — face position, tab switch) ─────────
+  const proctoringEnabled = !!aiCharacter && cameraOn;
   const { confidenceScore, alert: proctoringAlert, violationCount, shouldEnd } = useProctoring({
     videoRef,
     enabled: proctoringEnabled,
-    cameraActive: cameraOn,    // ← new prop to control face analysis separately
+  });
+
+  // ── AI-powered confidence (NVIDIA nemotron vision — every 15s) ────────────
+  const { aiScore, emotion, engagement, eyeContact, insight, isAnalyzing } = useAIConfidence({
+    videoRef,
+    enabled: proctoringEnabled,
   });
 
   // Auto-end session when proctoring terminates it
@@ -382,6 +387,12 @@ export default function InterviewSessionPage() {
         alert={proctoringAlert}
         violationCount={violationCount}
         onEndSession={handleEndEarly}
+        aiScore={aiScore}
+        emotion={emotion}
+        engagement={engagement}
+        eyeContact={eyeContact}
+        insight={insight}
+        isAnalyzing={isAnalyzing}
       />
 
       {/* ── Quick Feedback Overlay ─────────────────────────────────────── */}

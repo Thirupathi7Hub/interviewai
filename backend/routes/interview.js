@@ -246,4 +246,72 @@ router.get('/:id', authMiddleware, async (req, res) => {
   }
 });
 
+// ─── POST /api/interview/face-confidence ──────────────────────────────────────
+// Analyzes a webcam frame using NVIDIA nemotron vision model.
+// Returns AI-powered confidence score, emotion, and insight.
+router.post('/face-confidence', authMiddleware, async (req, res) => {
+  try {
+    const { imageBase64 } = req.body;
+    if (!imageBase64) return res.status(400).json({ error: 'imageBase64 is required' });
+
+    const NVIDIA_KEY = process.env.NVIDIA_API_KEY;
+    if (!NVIDIA_KEY?.startsWith('nvapi-')) {
+      // Fallback: return a neutral score if no key
+      return res.json({ score: 75, emotion: 'focused', engagement: 'medium', insight: 'AI confidence analysis unavailable.' });
+    }
+
+    const prompt = `You are an interview coach analyzing a candidate's webcam image during a live interview.
+Analyze the person's face and body language. Return ONLY this JSON (no extra text):
+{
+  "score": <0-100 confidence level>,
+  "emotion": "<calm|focused|nervous|stressed|confident|distracted|uncertain>",
+  "engagement": "<high|medium|low>",
+  "eyeContact": <true|false>,
+  "insight": "<1 short encouraging sentence about their presence>"
+}
+Guidelines:
+- 85-100: Very confident, relaxed, direct eye contact
+- 65-84: Reasonably confident, minor nervousness
+- 45-64: Noticeable anxiety, looking away often
+- 0-44: High stress, disengaged, or no face visible`;
+
+    const { default: axios } = await import('axios');
+    const response = await axios.post(
+      'https://integrate.api.nvidia.com/v1/chat/completions',
+      {
+        model: 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning',
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: imageBase64 } },
+          ],
+        }],
+        temperature: 0.3,
+        max_tokens: 200,
+        stream: false,
+        extra_body: {
+          chat_template_kwargs: { enable_thinking: false },
+        },
+      },
+      {
+        timeout: 15000,
+        headers: {
+          Authorization: `Bearer ${NVIDIA_KEY}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    const raw = response.data.choices[0].message.content;
+    const cleaned = raw.replace(/```json|```/g, '').trim();
+    const result = JSON.parse(cleaned);
+    res.json(result);
+  } catch (err) {
+    console.error('Face confidence error:', err.message);
+    // Graceful fallback — never crash the interview
+    res.json({ score: 70, emotion: 'focused', engagement: 'medium', eyeContact: true, insight: 'Keep going, you\'re doing great!' });
+  }
+});
+
 export default router;

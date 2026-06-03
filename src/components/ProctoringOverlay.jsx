@@ -1,66 +1,129 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { Shield, ShieldAlert, ShieldX, AlertTriangle } from 'lucide-react';
+import { Shield, ShieldAlert, ShieldX, AlertTriangle, Brain, Eye, EyeOff, Zap } from 'lucide-react';
 
 const MAX_VIOLATIONS = 3;
 
-export default function ProctoringOverlay({ confidenceScore, alert, violationCount, onEndSession }) {
-  const level = confidenceScore >= 75 ? 'good' : confidenceScore >= 45 ? 'warn' : 'danger';
+const EMOTION_COLORS = {
+  confident:   'text-green-400',
+  calm:        'text-green-400',
+  focused:     'text-blue-400',
+  uncertain:   'text-yellow-400',
+  nervous:     'text-yellow-400',
+  stressed:    'text-orange-400',
+  distracted:  'text-red-400',
+};
+
+export default function ProctoringOverlay({
+  confidenceScore,
+  alert,
+  violationCount,
+  onEndSession,
+  // AI confidence props (optional)
+  aiScore      = null,
+  emotion      = '',
+  engagement   = '',
+  eyeContact   = true,
+  insight      = '',
+  isAnalyzing  = false,
+}) {
+  // Prefer AI score when available, fall back to heuristic score
+  const displayScore = aiScore !== null ? aiScore : confidenceScore;
+  const level = displayScore >= 75 ? 'good' : displayScore >= 45 ? 'warn' : 'danger';
+  const hasAI = aiScore !== null;
 
   const theme = {
-    good:   { ring: '#4ade80', text: 'text-green-400',  bg: 'bg-green-500/10',  border: 'border-green-500/25',  label: 'High' },
-    warn:   { ring: '#facc15', text: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/25', label: 'Mid'  },
-    danger: { ring: '#f87171', text: 'text-red-400',    bg: 'bg-red-500/10',    border: 'border-red-500/25',    label: 'Low'  },
+    good:   { ring: '#4ade80', text: 'text-green-400',  bg: 'bg-green-500/10',  border: 'border-green-500/25' },
+    warn:   { ring: '#facc15', text: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/25' },
+    danger: { ring: '#f87171', text: 'text-red-400',    bg: 'bg-red-500/10',    border: 'border-red-500/25' },
   }[level];
 
   const Icon = level === 'good' ? Shield : level === 'warn' ? ShieldAlert : ShieldX;
+  const emotionColor = emotion ? (EMOTION_COLORS[emotion] || 'text-gray-400') : 'text-gray-400';
 
-  // SVG ring
   const R          = 20;
   const circum     = 2 * Math.PI * R;
-  const dashOffset = circum * (1 - Math.max(0, confidenceScore) / 100);
+  const dashOffset = circum * (1 - Math.max(0, displayScore) / 100);
 
   return (
     <>
-      {/* ── Confidence HUD ──────────────────────────────────────────────── */}
+      {/* ── AI Confidence HUD ─────────────────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}
-        className={`absolute top-[72px] left-3 z-30 ${theme.bg} ${theme.border} border backdrop-blur-md rounded-2xl px-3 py-2.5 flex items-center gap-3 shadow-xl`}
+        className={`absolute top-[72px] left-3 z-30 ${theme.bg} ${theme.border} border backdrop-blur-md rounded-2xl px-3 py-2.5 flex flex-col gap-2 shadow-xl min-w-[130px]`}
       >
-        {/* Animated ring gauge */}
-        <div className="relative w-11 h-11 flex-shrink-0">
-          <svg viewBox="0 0 50 50" className="w-full h-full -rotate-90">
-            <circle cx="25" cy="25" r={R} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="5" />
-            <circle
-              cx="25" cy="25" r={R} fill="none"
-              strokeWidth="5" strokeLinecap="round"
-              style={{
-                stroke: theme.ring,
-                strokeDasharray: circum,
-                strokeDashoffset: dashOffset,
-                transition: 'stroke-dashoffset 0.7s ease, stroke 0.4s ease',
-              }}
-            />
-          </svg>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Icon size={13} className={theme.text} />
+        {/* Score row */}
+        <div className="flex items-center gap-3">
+          <div className="relative w-11 h-11 flex-shrink-0">
+            <svg viewBox="0 0 50 50" className="w-full h-full -rotate-90">
+              <circle cx="25" cy="25" r={R} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="5" />
+              <circle
+                cx="25" cy="25" r={R} fill="none"
+                strokeWidth="5" strokeLinecap="round"
+                style={{
+                  stroke: theme.ring,
+                  strokeDasharray: circum,
+                  strokeDashoffset: dashOffset,
+                  transition: 'stroke-dashoffset 0.7s ease, stroke 0.4s ease',
+                }}
+              />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Icon size={13} className={theme.text} />
+            </div>
+          </div>
+
+          <div className="min-w-[60px]">
+            <div className="flex items-center gap-1 mb-0.5">
+              <p className="text-[9px] text-gray-500 uppercase font-bold tracking-wider leading-none">Confidence</p>
+              {hasAI && (
+                <span className="flex items-center gap-0.5 bg-purple-500/20 border border-purple-500/30 rounded px-1 py-0.5">
+                  <Brain size={7} className="text-purple-400" />
+                  <span className="text-[7px] text-purple-400 font-bold">AI</span>
+                  {isAnalyzing && <Zap size={6} className="text-purple-300 animate-pulse ml-0.5" />}
+                </span>
+              )}
+            </div>
+            <p className={`text-2xl font-black leading-none ${theme.text}`}>{Math.round(displayScore)}</p>
+            <div className="flex items-center gap-1.5 mt-1">
+              {[0, 1, 2].map(i => (
+                <div
+                  key={i}
+                  className={`w-2 h-2 rounded-full transition-all duration-300 ${i < violationCount ? 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.8)]' : 'bg-white/10'}`}
+                />
+              ))}
+              <span className="text-[9px] text-gray-600 ml-0.5">violations</span>
+            </div>
           </div>
         </div>
 
-        {/* Text */}
-        <div className="min-w-[60px]">
-          <p className="text-[9px] text-gray-500 uppercase font-bold tracking-wider leading-none mb-0.5">Confidence</p>
-          <p className={`text-2xl font-black leading-none ${theme.text}`}>{Math.round(confidenceScore)}</p>
-          <div className="flex items-center gap-1.5 mt-1">
-            {[0, 1, 2].map(i => (
-              <div
-                key={i}
-                className={`w-2 h-2 rounded-full transition-all duration-300 ${i < violationCount ? 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.8)]' : 'bg-white/10'}`}
-              />
-            ))}
-            <span className="text-[9px] text-gray-600 ml-0.5">violations</span>
+        {/* Emotion + engagement row (AI only) */}
+        {hasAI && emotion && (
+          <div className="border-t border-white/5 pt-2 flex flex-col gap-1">
+            <div className="flex items-center justify-between">
+              <span className={`text-[10px] font-bold capitalize ${emotionColor}`}>{emotion}</span>
+              <div className="flex items-center gap-1">
+                {eyeContact
+                  ? <Eye size={10} className="text-green-400" />
+                  : <EyeOff size={10} className="text-yellow-400" />}
+                <span className="text-[9px] text-gray-500">{eyeContact ? 'on camera' : 'look at cam'}</span>
+              </div>
+            </div>
+            {engagement && (
+              <div className="flex items-center gap-1">
+                <div className={`w-1.5 h-1.5 rounded-full ${engagement === 'high' ? 'bg-green-400' : engagement === 'medium' ? 'bg-yellow-400' : 'bg-red-400'}`} />
+                <span className="text-[9px] text-gray-500 capitalize">{engagement} engagement</span>
+              </div>
+            )}
           </div>
-        </div>
+        )}
+
+        {/* AI insight quote */}
+        {hasAI && insight && (
+          <p className="text-[8px] text-gray-400 leading-tight border-t border-white/5 pt-1.5 italic">
+            "{insight}"
+          </p>
+        )}
       </motion.div>
 
       {/* ── Alert toast ─────────────────────────────────────────────────── */}
@@ -111,17 +174,15 @@ export default function ProctoringOverlay({ confidenceScore, alert, violationCou
                 </div>
               </div>
               <p className="text-gray-400 text-sm mb-6 leading-relaxed">
-                You exceeded the maximum of <span className="text-red-400 font-bold">3 integrity violations</span>. 
+                You exceeded the maximum of <span className="text-red-400 font-bold">3 integrity violations</span>.
                 Your session has been automatically flagged and terminated.
               </p>
-              <div className="flex flex-col gap-2">
-                <button
-                  onClick={onEndSession}
-                  className="w-full bg-red-500 hover:bg-red-400 text-white font-bold py-3 rounded-xl transition-colors text-sm"
-                >
-                  View Partial Results
-                </button>
-              </div>
+              <button
+                onClick={onEndSession}
+                className="w-full bg-red-500 hover:bg-red-400 text-white font-bold py-3 rounded-xl transition-colors text-sm"
+              >
+                View Partial Results
+              </button>
             </motion.div>
           </motion.div>
         )}
