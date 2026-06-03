@@ -254,7 +254,7 @@ router.post('/face-confidence', authMiddleware, async (req, res) => {
     const { imageBase64 } = req.body;
     if (!imageBase64) return res.status(400).json({ error: 'imageBase64 is required' });
 
-    const NVIDIA_KEY = process.env.NVIDIA_API_KEY;
+    const NVIDIA_KEY = process.env.NVIDIA_NEMOTRON_KEY || process.env.NVIDIA_API_KEY;
     if (!NVIDIA_KEY?.startsWith('nvapi-')) {
       // Fallback: return a neutral score if no key
       return res.json({ score: 75, emotion: 'focused', engagement: 'medium', insight: 'AI confidence analysis unavailable.' });
