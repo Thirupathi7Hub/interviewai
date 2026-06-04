@@ -31,7 +31,8 @@ function AppRoutes() {
         <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
         <Route path="/select" element={<ProtectedRoute><SubjectSelectionPage /></ProtectedRoute>} />
         <Route path="/session" element={<ProtectedRoute><InterviewSessionPage /></ProtectedRoute>} />
-        <Route path="/feedback" element={<ProtectedRoute><FeedbackPage /></ProtectedRoute>} />
+        <Route path="/feedback"     element={<ProtectedRoute><FeedbackPage /></ProtectedRoute>} />
+        <Route path="/feedback/:id" element={<ProtectedRoute><FeedbackPage /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
         <Route path="/oauth/callback" element={<AuthCallbackPage />} />
       </Routes>

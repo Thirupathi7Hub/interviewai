@@ -39,7 +39,7 @@ function ScoreBar({ score }) {
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { history, historyStats, fetchHistory, setLastFeedback } = useInterview();
+  const { history, historyStats, fetchHistory } = useInterview();
 
   useEffect(() => {
     fetchHistory();
@@ -129,8 +129,8 @@ export default function DashboardPage() {
 
           <div className="glass rounded-2xl border border-white/8 overflow-hidden">
             {/* Header */}
-            <div className="hidden sm:grid grid-cols-[1fr_2fr_1fr_1fr] gap-4 px-6 py-3 border-b border-white/5">
-              {['Date', 'Domain', 'Score', 'Badge'].map(h => (
+            <div className="hidden sm:grid grid-cols-[1fr_2fr_1fr_1fr_auto] gap-4 px-6 py-3 border-b border-white/5">
+              {['Date', 'Domain', 'Score', 'Badge', ''].map(h => (
                 <p key={h} className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</p>
               ))}
             </div>
@@ -148,11 +148,8 @@ export default function DashboardPage() {
                     initial={{ opacity: 0, x: -12 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.5 + i * 0.07 }}
-                    className="grid grid-cols-1 sm:grid-cols-[1fr_2fr_1fr_1fr] gap-3 sm:gap-4 px-6 py-4 border-b border-white/5 last:border-0 hover:bg-white/3 transition-colors group cursor-pointer"
-                    onClick={() => {
-                      setLastFeedback(item);
-                      navigate('/feedback');
-                    }}
+                    className="grid grid-cols-1 sm:grid-cols-[1fr_2fr_1fr_1fr_auto] gap-3 sm:gap-4 px-6 py-4 border-b border-white/5 last:border-0 hover:bg-white/3 transition-colors group cursor-pointer items-center"
+                    onClick={() => navigate(`/feedback/${item._id}`)}
                   >
                     <div className="flex items-center gap-2 text-sm text-gray-400">
                       <Calendar size={13} className="opacity-60" />
@@ -163,6 +160,10 @@ export default function DashboardPage() {
                     <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border w-fit ${badgeColor[badge]}`}>
                       {badge}
                     </span>
+                    <div className="hidden sm:flex items-center gap-1 text-xs text-gray-600 group-hover:text-gold-400 transition-colors whitespace-nowrap">
+                      View Report
+                      <ArrowRight size={12} className="group-hover:translate-x-0.5 transition-transform" />
+                    </div>
                   </motion.div>
                 );
               })
