@@ -116,7 +116,50 @@ function buildHTML(fb, userName) {
   const str  = (fb.strengths    || []).filter(Boolean);
   const imp  = (fb.improvements || []).filter(Boolean);
   const qa   = (fb.qa || []).filter(q => q.question && q.answer);
-  const hasQA = qa.length > 0;
+
+  // Group Q&As into chunks of maximum 3 questions per page
+  const qaChunks = [];
+  for (let i = 0; i < qa.length; i += 3) {
+    qaChunks.push(qa.slice(i, i + 3));
+  }
+  const totalPages = 1 + qaChunks.length;
+
+  // Generate pages dynamically
+  const qaPagesHtml = qaChunks.map((chunk, chunkIdx) => {
+    const pageNum = chunkIdx + 2;
+    return `
+    <!-- PAGE ${pageNum}: DETAILED Q&A REVIEW -->
+    <div class="page" id="page-${pageNum}" style="margin-top: 30px;">
+      <div>
+        <!-- HEADER -->
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f1f5f9; padding-bottom: 24px; margin-bottom: 30px;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+              <div style="background: #b45309; width: 10px; height: 20px; border-radius: 3px;"></div>
+              <h1 style="color: #0f172a; font-size: 24px; font-weight: 900; letter-spacing: -0.03em; text-transform: uppercase;">Interview AI</h1>
+            </div>
+            <p style="color: #64748b; font-size: 13px; font-weight: 600; text-transform: uppercase; tracking: 0.05em;">Detailed Q&A Evaluation</p>
+          </div>
+          <div style="text-align: right;">
+            <p style="color: #0f172a; font-size: 14px; font-weight: 800; margin-bottom: 4px;">${userName}</p>
+            <p style="color: #64748b; font-size: 12px; font-weight: 500;">Questions ${chunkIdx * 3 + 1} - ${chunkIdx * 3 + chunk.length}</p>
+          </div>
+        </div>
+
+        <!-- QUESTIONS AND SUGGESTED ANSWERS -->
+        <div>
+          ${chunk.map((q, i) => qaCard(q, chunkIdx * 3 + i)).join('')}
+        </div>
+      </div>
+
+      <!-- PAGE FOOTER -->
+      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e2e8f0; padding-top: 20px; color: #64748b; font-size: 11px; font-weight: 600;">
+        <div>Detailed Performance Breakdown</div>
+        <div>Interview AI Assessment Report</div>
+        <div>Page ${pageNum} of ${totalPages}</div>
+      </div>
+    </div>`;
+  }).join('');
 
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
@@ -206,43 +249,11 @@ function buildHTML(fb, userName) {
     <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e2e8f0; padding-top: 20px; color: #64748b; font-size: 11px; font-weight: 600;">
       <div>Report Generated on ${dateStr}</div>
       <div>Powered by InterviewAI & NVIDIA NIM</div>
-      <div>Page 1 of ${hasQA ? '2' : '1'}</div>
+      <div>Page 1 of ${totalPages}</div>
     </div>
   </div>
 
-  ${hasQA ? `
-  <!-- PAGE 2: DETAILED Q&A REVIEW -->
-  <div class="page" id="page-2" style="margin-top: 30px;">
-    <div>
-      <!-- HEADER -->
-      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f1f5f9; padding-bottom: 24px; margin-bottom: 30px;">
-        <div>
-          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-            <div style="background: #b45309; width: 10px; height: 20px; border-radius: 3px;"></div>
-            <h1 style="color: #0f172a; font-size: 24px; font-weight: 900; letter-spacing: -0.03em; text-transform: uppercase;">Interview AI</h1>
-          </div>
-          <p style="color: #64748b; font-size: 13px; font-weight: 600; text-transform: uppercase; tracking: 0.05em;">Detailed Q&A Evaluation</p>
-        </div>
-        <div style="text-align: right;">
-          <p style="color: #0f172a; font-size: 14px; font-weight: 800; margin-bottom: 4px;">${userName}</p>
-          <p style="color: #64748b; font-size: 12px; font-weight: 500;">QA Record Review</p>
-        </div>
-      </div>
-
-      <!-- QUESTIONS AND SUGGESTED ANSWERS -->
-      <div>
-        ${qa.map((q, i) => qaCard(q, i)).join('')}
-      </div>
-    </div>
-
-    <!-- PAGE 2 FOOTER -->
-    <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e2e8f0; padding-top: 20px; color: #64748b; font-size: 11px; font-weight: 600;">
-      <div>Detailed Performance Breakdown</div>
-      <div>Interview AI Assessment Report</div>
-      <div>Page 2 of 2</div>
-    </div>
-  </div>
-  ` : ''}
+  ${qaPagesHtml}
 
 </body></html>`;
 }
@@ -254,39 +265,25 @@ export async function exportInterviewPDF(feedback, userName = 'Candidate') {
   document.body.appendChild(wrap);
 
   const iframe = document.createElement('iframe');
-  iframe.style.cssText = 'width:800px;height:2400px;border:none;display:block;';
+  iframe.style.cssText = 'width:800px;height:6000px;border:none;display:block;';
   wrap.appendChild(iframe);
   iframe.srcdoc = buildHTML(feedback, userName);
 
   await new Promise(res => { iframe.onload = () => setTimeout(res, 800); });
 
   try {
-    const p1 = iframe.contentDocument?.getElementById('page-1');
-    const p2 = iframe.contentDocument?.getElementById('page-2');
-    
-    if (!p1) throw new Error('page-1 element not found in iframe');
+    const pages = iframe.contentDocument?.querySelectorAll('.page') || [];
+    if (pages.length === 0) throw new Error('No page elements found in iframe');
 
     const doc = new jsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
     const pdfW = 210;
     const pdfH = 297;
 
-    // Render Page 1
-    const c1 = await html2canvas(p1, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: '#ffffff',
-      logging: false,
-      width: 800,
-      height: 1130
-    });
-    
-    doc.addImage(c1.toDataURL('image/png'), 'PNG', 0, 0, pdfW, pdfH);
-
-    // Render Page 2 if exists
-    if (p2) {
-      doc.addPage();
-      const c2 = await html2canvas(p2, {
+    for (let i = 0; i < pages.length; i++) {
+      if (i > 0) {
+        doc.addPage();
+      }
+      const canvas = await html2canvas(pages[i], {
         scale: 2,
         useCORS: true,
         allowTaint: true,
@@ -295,7 +292,8 @@ export async function exportInterviewPDF(feedback, userName = 'Candidate') {
         width: 800,
         height: 1130
       });
-      doc.addImage(c2.toDataURL('image/png'), 'PNG', 0, 0, pdfW, pdfH);
+      
+      doc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pdfW, pdfH);
     }
 
     const safe = userName.replace(/\s+/g, '_');
