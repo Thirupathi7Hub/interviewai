@@ -288,14 +288,16 @@ Guidelines:
           ],
         }],
         temperature: 0.3,
-        max_tokens: 200,
+        max_tokens: 500,
         stream: false,
         extra_body: {
-          chat_template_kwargs: { enable_thinking: false },
+          // enable_thinking must be true for this model to produce content output
+          chat_template_kwargs: { enable_thinking: true },
+          reasoning_budget: 256,   // minimal thinking — keeps response fast
         },
       },
       {
-        timeout: 15000,
+        timeout: 20000,
         headers: {
           Authorization: `Bearer ${NVIDIA_KEY}`,
           'Content-Type': 'application/json',
@@ -303,9 +305,20 @@ Guidelines:
       }
     );
 
-    const raw = response.data.choices[0].message.content;
-    const cleaned = raw.replace(/```json|```/g, '').trim();
+    const msg = response.data.choices[0].message;
+    // nemotron puts actual answer in `content`; thinking goes to `reasoning_content`
+    // When content is null/empty, try reasoning_content as fallback
+    const raw = (msg.content && msg.content.trim())
+      ? msg.content
+      : (msg.reasoning_content || '');
+
+    if (!raw) throw new Error('Empty response from nemotron model');
+
+    // Extract JSON block if wrapped in markdown
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    const cleaned = jsonMatch ? jsonMatch[0] : raw.replace(/```json|```/g, '').trim();
     const result = JSON.parse(cleaned);
+    console.log(`🎯 AI face confidence: ${result.score} (${result.emotion})`);
     res.json(result);
   } catch (err) {
     console.error('Face confidence error:', err.message);
