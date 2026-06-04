@@ -129,10 +129,12 @@ export default function DashboardPage() {
 
           <div className="glass rounded-2xl border border-white/8 overflow-hidden">
             {/* Header */}
-            <div className="hidden sm:grid grid-cols-[1fr_2fr_1fr_1fr_auto] gap-4 px-6 py-3 border-b border-white/5">
-              {['Date', 'Domain', 'Score', 'Badge', ''].map(h => (
-                <p key={h} className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</p>
-              ))}
+            <div className="hidden sm:grid grid-cols-[1fr_2fr_1fr_1fr_auto] gap-4 px-6 py-3 border-b border-white/5 items-center">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Domain</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider text-center">Score</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider text-center">Badge</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider text-right opacity-0 select-none">Action</p>
             </div>
 
             {history.length === 0 ? (
@@ -156,11 +158,13 @@ export default function DashboardPage() {
                       {new Date(item.completedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                     </div>
                     <div className="text-sm font-medium text-white">{item.type} – {item.domain}</div>
-                    <ScoreBar score={item.finalScore} />
-                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border w-fit ${badgeColor[badge]}`}>
-                      {badge}
-                    </span>
-                    <div className="hidden sm:flex items-center gap-1 text-xs text-gray-600 group-hover:text-gold-400 transition-colors whitespace-nowrap">
+                    <div className="flex justify-center"><ScoreBar score={item.finalScore} /></div>
+                    <div className="flex justify-center">
+                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${badgeColor[badge]}`}>
+                        {badge}
+                      </span>
+                    </div>
+                    <div className="hidden sm:flex items-center justify-end gap-1 text-xs text-gray-600 group-hover:text-gold-400 transition-colors whitespace-nowrap">
                       View Report
                       <ArrowRight size={12} className="group-hover:translate-x-0.5 transition-transform" />
                     </div>
