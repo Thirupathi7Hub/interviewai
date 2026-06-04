@@ -129,7 +129,7 @@ function buildHTML(fb, userName) {
     const pageNum = chunkIdx + 2;
     return `
     <!-- PAGE ${pageNum}: DETAILED Q&A REVIEW -->
-    <div class="page" id="page-${pageNum}" style="margin-top: 30px;">
+    <div class="page" id="page-${pageNum}">
       <div>
         <!-- HEADER -->
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f1f5f9; padding-bottom: 24px; margin-bottom: 30px;">
@@ -260,44 +260,58 @@ function buildHTML(fb, userName) {
 
 // ─── Export ───────────────────────────────────────────────────────────────────
 export async function exportInterviewPDF(feedback, userName = 'Candidate') {
+  // Pre-calculate total pages so we know exactly how many to render
+  const qa = (feedback.qa || []).filter(q => q.question && q.answer);
+  const qaChunks = [];
+  for (let i = 0; i < qa.length; i += 3) {
+    qaChunks.push(qa.slice(i, i + 3));
+  }
+  const totalPages = 1 + qaChunks.length; // page 1 = summary, rest = Q&A pages
+
   const wrap = document.createElement('div');
   wrap.style.cssText = 'position:fixed;left:-9999px;top:0;z-index:-1;width:800px;';
   document.body.appendChild(wrap);
 
   const iframe = document.createElement('iframe');
-  iframe.style.cssText = 'width:800px;height:6000px;border:none;display:block;';
+  // Height: each page is 1130px + 40px gap, so max height for many pages
+  iframe.style.cssText = `width:800px;height:${totalPages * 1200}px;border:none;display:block;`;
   wrap.appendChild(iframe);
   iframe.srcdoc = buildHTML(feedback, userName);
 
-  await new Promise(res => { iframe.onload = () => setTimeout(res, 800); });
+  // Wait for iframe to fully render
+  await new Promise(res => { iframe.onload = () => setTimeout(res, 1000); });
 
   try {
-    const pages = iframe.contentDocument?.querySelectorAll('.page') || [];
-    if (pages.length === 0) throw new Error('No page elements found in iframe');
-
-    const doc = new jsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
+    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
     const pdfW = 210;
     const pdfH = 297;
 
-    for (let i = 0; i < pages.length; i++) {
-      if (i > 0) {
-        doc.addPage();
+    for (let pageIdx = 1; pageIdx <= totalPages; pageIdx++) {
+      const pageEl = iframe.contentDocument?.getElementById(`page-${pageIdx}`);
+      if (!pageEl) {
+        console.warn(`⚠️ page-${pageIdx} not found in PDF iframe`);
+        continue;
       }
-      const canvas = await html2canvas(pages[i], {
+
+      if (pageIdx > 1) doc.addPage();
+
+      const canvas = await html2canvas(pageEl, {
         scale: 2,
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#ffffff',
         logging: false,
         width: 800,
-        height: 1130
+        height: 1130,
+        windowWidth: 800,
+        windowHeight: 1130,
       });
-      
+
       doc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pdfW, pdfH);
     }
 
     const safe = userName.replace(/\s+/g, '_');
-    doc.save(`AI_Interview_Report_${safe}_${new Date().toISOString().slice(0,10)}.pdf`);
+    doc.save(`AI_Interview_Report_${safe}_${new Date().toISOString().slice(0, 10)}.pdf`);
   } finally {
     document.body.removeChild(wrap);
   }
