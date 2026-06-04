@@ -132,9 +132,9 @@ export default function DashboardPage() {
             <div className="hidden sm:grid grid-cols-[1fr_2fr_1fr_1fr_auto] gap-4 px-6 py-3 border-b border-white/5 items-center">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</p>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Domain</p>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider text-center">Score</p>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider text-center">Badge</p>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider text-right opacity-0 select-none">Action</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Score</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Badge</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider opacity-0 select-none">Action</p>
             </div>
 
             {history.length === 0 ? (
@@ -158,8 +158,8 @@ export default function DashboardPage() {
                       {new Date(item.completedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                     </div>
                     <div className="text-sm font-medium text-white">{item.type} – {item.domain}</div>
-                    <div className="flex justify-center"><ScoreBar score={item.finalScore} /></div>
-                    <div className="flex justify-center">
+                    <div><ScoreBar score={item.finalScore} /></div>
+                    <div className="flex items-center">
                       <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${badgeColor[badge]}`}>
                         {badge}
                       </span>
