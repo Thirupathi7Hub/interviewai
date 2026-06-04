@@ -231,7 +231,7 @@ function buildHTML(fb, userName) {
 
       <!-- QUESTIONS AND SUGGESTED ANSWERS -->
       <div>
-        ${qa.slice(0, 4).map((q, i) => qaCard(q, i)).join('')}
+        ${qa.map((q, i) => qaCard(q, i)).join('')}
       </div>
     </div>
 
