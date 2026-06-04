@@ -247,7 +247,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
 });
 
 // ─── POST /api/interview/face-confidence ──────────────────────────────────────
-// Analyzes a webcam frame using NVIDIA nemotron vision model.
+// Analyzes a webcam frame using NVIDIA llama-3.2-vision model.
 // Returns AI-powered confidence score, emotion, and insight.
 router.post('/face-confidence', authMiddleware, async (req, res) => {
   try {
@@ -256,30 +256,22 @@ router.post('/face-confidence', authMiddleware, async (req, res) => {
 
     const NVIDIA_KEY = process.env.NVIDIA_NEMOTRON_KEY || process.env.NVIDIA_API_KEY;
     if (!NVIDIA_KEY?.startsWith('nvapi-')) {
-      // Fallback: return a neutral score if no key
       return res.json({ score: 75, emotion: 'focused', engagement: 'medium', insight: 'AI confidence analysis unavailable.' });
     }
 
-    const prompt = `You are an interview coach analyzing a candidate's webcam image during a live interview.
-Analyze the person's face and body language. Return ONLY this JSON (no extra text):
-{
-  "score": <0-100 confidence level>,
-  "emotion": "<calm|focused|nervous|stressed|confident|distracted|uncertain>",
-  "engagement": "<high|medium|low>",
-  "eyeContact": <true|false>,
-  "insight": "<1 short encouraging sentence about their presence>"
-}
-Guidelines:
-- 85-100: Very confident, relaxed, direct eye contact
-- 65-84: Reasonably confident, minor nervousness
-- 45-64: Noticeable anxiety, looking away often
-- 0-44: High stress, disengaged, or no face visible`;
+    // Strict JSON-only prompt — no prose, no markdown
+    const prompt = `Analyze this interview candidate's webcam image. Reply with ONLY valid JSON, nothing else before or after it.
+
+{"score":<0-100>,"emotion":"<calm|focused|nervous|stressed|confident|distracted>","engagement":"<high|medium|low>","eyeContact":<true|false>,"insight":"<one short encouraging sentence>"}
+
+Score guide: 85-100=very confident & relaxed, 65-84=reasonably confident, 45-64=some anxiety, 0-44=high stress or no face.`;
 
     const { default: axios } = await import('axios');
     const response = await axios.post(
       'https://integrate.api.nvidia.com/v1/chat/completions',
       {
-        model: 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning',
+        // llama-3.2-11b-vision: fast (2-4s), purpose-built for image understanding
+        model: 'meta/llama-3.2-11b-vision-instruct',
         messages: [{
           role: 'user',
           content: [
@@ -287,17 +279,12 @@ Guidelines:
             { type: 'image_url', image_url: { url: imageBase64 } },
           ],
         }],
-        temperature: 0.3,
-        max_tokens: 500,
+        temperature: 0.1,
+        max_tokens: 180,
         stream: false,
-        extra_body: {
-          // enable_thinking must be true for this model to produce content output
-          chat_template_kwargs: { enable_thinking: true },
-          reasoning_budget: 256,   // minimal thinking — keeps response fast
-        },
       },
       {
-        timeout: 20000,
+        timeout: 12000,
         headers: {
           Authorization: `Bearer ${NVIDIA_KEY}`,
           'Content-Type': 'application/json',
@@ -305,25 +292,28 @@ Guidelines:
       }
     );
 
-    const msg = response.data.choices[0].message;
-    // nemotron puts actual answer in `content`; thinking goes to `reasoning_content`
-    // When content is null/empty, try reasoning_content as fallback
-    const raw = (msg.content && msg.content.trim())
-      ? msg.content
-      : (msg.reasoning_content || '');
+    const raw = response.data.choices[0].message.content || '';
 
-    if (!raw) throw new Error('Empty response from nemotron model');
+    // ── Robust JSON extraction ─────────────────────────────────────────────────
+    const jsonMatch = raw.match(/\{[\s\S]*?\}/);
+    if (jsonMatch) {
+      const result = JSON.parse(jsonMatch[0]);
+      if (typeof result.score === 'number') {
+        result.score = Math.max(0, Math.min(100, Math.round(result.score)));
+        console.log(`🎯 AI face confidence: ${result.score} (${result.emotion || 'unknown'})`);
+        return res.json(result);
+      }
+    }
 
-    // Extract JSON block if wrapped in markdown
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    const cleaned = jsonMatch ? jsonMatch[0] : raw.replace(/```json|```/g, '').trim();
-    const result = JSON.parse(cleaned);
-    console.log(`🎯 AI face confidence: ${result.score} (${result.emotion})`);
-    res.json(result);
+    // Fallback: try to extract a number from freeform text
+    const numMatch = raw.match(/\b([4-9]\d|100|[1-9]\d)\b/);
+    const fallbackScore = numMatch ? Math.min(100, parseInt(numMatch[1])) : 70;
+    console.warn(`⚠️ Non-JSON from vision model, extracted score: ${fallbackScore}`);
+    res.json({ score: fallbackScore, emotion: 'focused', engagement: 'medium', eyeContact: true, insight: "Keep going, you're doing great!" });
+
   } catch (err) {
     console.error('Face confidence error:', err.message);
-    // Graceful fallback — never crash the interview
-    res.json({ score: 70, emotion: 'focused', engagement: 'medium', eyeContact: true, insight: 'Keep going, you\'re doing great!' });
+    res.json({ score: 70, emotion: 'focused', engagement: 'medium', eyeContact: true, insight: "Keep going, you're doing great!" });
   }
 });
 
