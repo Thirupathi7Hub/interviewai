@@ -92,7 +92,27 @@ router.post('/answer', authMiddleware, async (req, res) => {
       const allWeaknesses  = interview.qa.flatMap(q => q.weaknesses  || []);
 
       interview.finalScore = finalScore;
-      interview.scoreBreakdown = evaluation.breakdown;
+
+      // Average the breakdown across ALL questions (not just the last one)
+      const allBreakdowns = interview.qa
+        .map(q => q.breakdown)
+        .filter(b => b && typeof b.content === 'number');
+
+      if (allBreakdowns.length > 0) {
+        const avg = (key) => Math.round(
+          allBreakdowns.reduce((sum, b) => sum + (b[key] || 0), 0) / allBreakdowns.length
+        );
+        interview.scoreBreakdown = {
+          content:       avg('content'),
+          communication: avg('communication'),
+          confidence:    avg('confidence'),
+        };
+      } else {
+        // Fallback: derive from overall score
+        interview.scoreBreakdown = evaluation.breakdown || {
+          content: finalScore, communication: finalScore, confidence: finalScore,
+        };
+      }
       interview.strengths    = [...new Set(allStrengths)].slice(0, 4);
       interview.improvements = [...new Set(allWeaknesses)].slice(0, 4);
       interview.status       = 'completed';
@@ -117,9 +137,10 @@ router.post('/answer', authMiddleware, async (req, res) => {
       });
     }
 
-    // Update current Q&A with evaluation results
+    // Update current Q&A with evaluation results (including breakdown for later averaging)
     interview.qa[questionIndex].answer          = answer;
     interview.qa[questionIndex].score           = evaluation.score;
+    interview.qa[questionIndex].breakdown       = evaluation.breakdown; // ← save per question
     interview.qa[questionIndex].strengths       = evaluation.strengths;
     interview.qa[questionIndex].weaknesses      = evaluation.weaknesses;
     interview.qa[questionIndex].suggestedAnswer = evaluation.suggestedAnswer;
