@@ -1,10 +1,9 @@
 import express from 'express';
 import multer from 'multer';
 import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const pdfParse = require('pdf-parse');
 import authMiddleware from '../middleware/auth.js';
 
+const require = createRequire(import.meta.url);
 const router = express.Router();
 
 // Store file in memory (no disk write needed)
@@ -18,18 +17,17 @@ const upload = multer({
 });
 
 // ─── POST /api/resume/parse ───────────────────────────────────────────────────
-// Accepts a PDF resume, extracts text, and returns structured context
-// that will be injected into the interview question prompts.
 router.post('/parse', authMiddleware, upload.single('resume'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No PDF file uploaded' });
 
-    // Parse the PDF buffer
+    // Lazy-load pdf-parse to avoid its test file scan at module startup
+    const pdfParse = require('pdf-parse');
     const data = await pdfParse(req.file.buffer);
     const text = data.text || '';
 
     if (!text.trim()) {
-      return res.status(422).json({ error: 'Could not extract text from this PDF. Try a non-scanned resume.' });
+      return res.status(422).json({ error: 'Could not extract text. Try a non-scanned PDF.' });
     }
 
     // ── Extract structured info from raw text ────────────────────────────────
