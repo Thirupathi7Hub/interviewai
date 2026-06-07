@@ -4,8 +4,9 @@ function toUser(data) {
   if (!data) return null;
   return {
     ...data,
-    _id: data.id,
-    googleId: data.google_id,
+    _id:           data.id,
+    googleId:      data.google_id,
+    resumeContext: data.resume_context ?? null,
   };
 }
 
@@ -24,7 +25,7 @@ export const User = {
   findById: async (id) => {
     const { data, error } = await supabase
       .from('users')
-      .select('id,name,email,google_id,avatar,created_at')
+      .select('id,name,email,google_id,avatar,resume_context,created_at')
       .eq('id', id)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -61,14 +62,15 @@ export const User = {
   // Update user fields (name, avatar)
   update: async (id, fields) => {
     const allowed = {};
-    if (fields.name     !== undefined) allowed.name      = fields.name;
-    if (fields.avatar   !== undefined) allowed.avatar    = fields.avatar;
-    if (fields.googleId !== undefined) allowed.google_id = fields.googleId;
+    if (fields.name          !== undefined) allowed.name           = fields.name;
+    if (fields.avatar        !== undefined) allowed.avatar         = fields.avatar;
+    if (fields.googleId      !== undefined) allowed.google_id      = fields.googleId;
+    if (fields.resumeContext !== undefined) allowed.resume_context = fields.resumeContext;
     const { data, error } = await supabase
       .from('users')
       .update(allowed)
       .eq('id', id)
-      .select('id,name,email,google_id,avatar,created_at')
+      .select('id,name,email,google_id,avatar,resume_context,created_at')
       .single();
     if (error) throw new Error(error.message);
     return toUser(data);

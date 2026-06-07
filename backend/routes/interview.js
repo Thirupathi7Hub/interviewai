@@ -1,5 +1,6 @@
 import express from 'express';
 import Interview from '../models/Interview.js';
+import { User } from '../models/User.js';
 import authMiddleware from '../middleware/auth.js';
 import { generateQuestion, evaluateAnswer } from '../services/aiService.js';
 
@@ -9,9 +10,14 @@ const router = express.Router();
 // Create a new interview session and get the first question
 router.post('/start', authMiddleware, async (req, res) => {
   try {
-    const { type, domain, totalQuestions: tq, difficulty = 'intermediate', resumeContext = null } = req.body;
+    const { type, domain, totalQuestions: tq, difficulty = 'intermediate' } = req.body;
     if (!type || !domain) return res.status(400).json({ error: 'type and domain are required' });
     const totalQuestions = [5, 10, 15, 20].includes(Number(tq)) ? Number(tq) : 5;
+
+    // Auto-load resume from user profile (set on Dashboard)
+    const userProfile   = await User.findById(req.user.id);
+    const resumeContext = userProfile?.resumeContext || null;
+    if (resumeContext) console.log(`📄 Using saved resume for ${userProfile.name}`);
 
     const { question } = await generateQuestion(type, domain, 0, [], false, difficulty, resumeContext);
 
@@ -21,7 +27,7 @@ router.post('/start', authMiddleware, async (req, res) => {
       domain,
       totalQuestions,
       status: 'active',
-      resumeContext,   // ← store for all future questions in this session
+      resumeContext,
       qa: [{ question, answer: '', score: 0, _difficulty: difficulty }],
     });
 

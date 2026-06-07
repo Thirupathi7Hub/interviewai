@@ -36,4 +36,30 @@ router.put('/profile', authMiddleware, async (req, res) => {
   }
 });
 
+// PUT /api/user/resume – save parsed resume context to user profile
+router.put('/resume', authMiddleware, async (req, res) => {
+  try {
+    const { resumeContext } = req.body;
+    if (!resumeContext || !resumeContext.rawSummary)
+      return res.status(400).json({ error: 'Invalid resume data.' });
+
+    const updated = await User.update(req.user.id, { resumeContext });
+    console.log(`📄 Resume saved for user ${req.user.id}`);
+    res.json({ success: true, resumeContext: updated.resumeContext });
+  } catch (err) {
+    console.error('❌ Resume save error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/user/resume – remove resume from user profile
+router.delete('/resume', authMiddleware, async (req, res) => {
+  try {
+    await User.update(req.user.id, { resumeContext: null });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
