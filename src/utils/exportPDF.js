@@ -137,7 +137,7 @@ function buildHTML(fb, userName) {
           <div>
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
               <div style="background: #b45309; width: 10px; height: 20px; border-radius: 3px;"></div>
-              <h1 style="color: #0f172a; font-size: 24px; font-weight: 900; letter-spacing: -0.03em; text-transform: uppercase;">Interview AI</h1>
+              <h1 style="color: #0f172a; font-size: 24px; font-weight: 900; letter-spacing: -0.03em; text-transform: uppercase;">AI InterviewPrep</h1>
             </div>
             <p style="color: #64748b; font-size: 13px; font-weight: 600; text-transform: uppercase; tracking: 0.05em;">Detailed Q&A Evaluation</p>
           </div>
@@ -156,7 +156,7 @@ function buildHTML(fb, userName) {
       <!-- PAGE FOOTER -->
       <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e2e8f0; padding-top: 20px; color: #64748b; font-size: 11px; font-weight: 600;">
         <div>Detailed Performance Breakdown</div>
-        <div>Interview AI Assessment Report</div>
+        <div>AI InterviewPrep Assessment Report</div>
         <div>Page ${pageNum} of ${totalPages}</div>
       </div>
     </div>`;
@@ -192,7 +192,7 @@ function buildHTML(fb, userName) {
         <div>
           <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
             <div style="background: #b45309; width: 10px; height: 20px; border-radius: 3px;"></div>
-            <h1 style="color: #0f172a; font-size: 24px; font-weight: 900; letter-spacing: -0.03em; text-transform: uppercase;">Interview AI</h1>
+            <h1 style="color: #0f172a; font-size: 24px; font-weight: 900; letter-spacing: -0.03em; text-transform: uppercase;">AI InterviewPrep</h1>
           </div>
           <p style="color: #64748b; font-size: 13px; font-weight: 600; text-transform: uppercase; tracking: 0.05em;">Official Performance Assessment</p>
         </div>
@@ -249,7 +249,7 @@ function buildHTML(fb, userName) {
     <!-- PAGE 1 FOOTER -->
     <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e2e8f0; padding-top: 20px; color: #64748b; font-size: 11px; font-weight: 600;">
       <div>Report Generated on ${dateStr}</div>
-      <div>Powered by InterviewAI & NVIDIA NIM</div>
+      <div>Powered by AI InterviewPrep & NVIDIA NIM</div>
       <div>Page 1 of ${totalPages}</div>
     </div>
   </div>
