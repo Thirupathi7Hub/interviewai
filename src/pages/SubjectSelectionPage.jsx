@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, Loader2, CheckCircle2, X } from 'lucide-react';
+import { ChevronRight, Loader2, CheckCircle2, X, Upload, FileText, Sparkles, Trash2 } from 'lucide-react';
 import Navbar from '../components/Navbar.jsx';
 import { useInterview } from '../context/InterviewContext';
+import client from '../api/client';
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
@@ -76,7 +77,7 @@ const questionCounts = [
   { id: 15, label: '15', sub: 'Full Interview',    time: '~30 min', color: '#ef4444' },
 ];
 
-const STEPS = ['Mode', 'Topic', 'Difficulty', 'Questions'];
+const STEPS = ['Mode', 'Topic', 'Difficulty', 'Questions', 'Resume'];
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -89,18 +90,61 @@ export default function SubjectSelectionPage() {
   const [difficulty, setDifficulty] = useState(null);
   const [qCount,     setQCount]     = useState(null);
   const [loading,    setLoading]    = useState(false);
-  const [step,       setStep]       = useState(0); // 0=mode,1=topic,2=difficulty,3=questions
+  const [step,       setStep]       = useState(0); // 0=mode,1=topic,2=difficulty,3=questions,4=resume
+
+  // Resume upload state
+  const [resumeContext, setResumeContext] = useState(null);
+  const [resumeFile,    setResumeFile]    = useState(null);
+  const [resumeLoading, setResumeLoading] = useState(false);
+  const [resumeError,   setResumeError]   = useState('');
+  const [dragOver,      setDragOver]      = useState(false);
+  const fileInputRef = useRef(null);
 
   const items        = mode === 'language' ? languages : roles;
   const selectedItem = items.find(i => i.id === selected);
   const selectedDiff = difficulties.find(d => d.id === difficulty);
   const selectedQ    = questionCounts.find(q => q.id === qCount);
 
+  // ── Resume upload handler ─────────────────────────────────────────────────
+  const handleResumeUpload = useCallback(async (file) => {
+    if (!file || file.type !== 'application/pdf') {
+      setResumeError('Please upload a PDF file.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setResumeError('File too large. Max 5 MB.');
+      return;
+    }
+    setResumeError('');
+    setResumeLoading(true);
+    setResumeFile(file);
+    try {
+      const formData = new FormData();
+      formData.append('resume', file);
+      const res = await client.post('/resume/parse', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setResumeContext(res.data);
+    } catch (err) {
+      setResumeError(err.response?.data?.error || 'Failed to parse resume.');
+      setResumeFile(null);
+    } finally {
+      setResumeLoading(false);
+    }
+  }, []);
+
+  const clearResume = () => {
+    setResumeContext(null);
+    setResumeFile(null);
+    setResumeError('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const handleStart = async () => {
     if (!selected || !difficulty || !qCount || loading) return;
     try {
       setLoading(true);
-      await startInterview(mode, selectedItem.label, qCount, difficulty);
+      await startInterview(mode, selectedItem.label, qCount, difficulty, resumeContext);
       navigate('/session');
     } catch (err) {
       console.error(err);
@@ -112,9 +156,10 @@ export default function SubjectSelectionPage() {
 
   const goBack = () => {
     if (step === 0) return;
-    if (step === 3) { setQCount(null);     setStep(2); }
-    if (step === 2) { setDifficulty(null); setStep(1); }
-    if (step === 1) { setSelected(null); setMode(null); setStep(0); }
+    if (step === 4) { setStep(3); }
+    else if (step === 3) { setQCount(null);     setStep(2); }
+    else if (step === 2) { setDifficulty(null); setStep(1); }
+    else if (step === 1) { setSelected(null); setMode(null); setStep(0); }
   };
 
   const containerVariants = {
@@ -376,20 +421,169 @@ export default function SubjectSelectionPage() {
               <motion.button
                 whileHover={{ scale: qCount ? 1.02 : 1 }}
                 whileTap={{ scale: qCount ? 0.98 : 1 }}
-                onClick={handleStart}
-                disabled={!qCount || loading}
+                onClick={() => { if (qCount) setStep(4); }}
+                disabled={!qCount}
                 className="w-full btn-gold py-4 rounded-2xl text-base font-bold flex items-center justify-center gap-3 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
               >
-                {loading ? (
-                  <><Loader2 size={20} className="animate-spin" />Starting Interview...</>
-                ) : (
-                  <><span>Start Interview</span><ChevronRight size={20} /></>
-                )}
+                <span>Continue</span><ChevronRight size={20} />
               </motion.button>
 
               {qCount && (
                 <p className="text-center text-xs text-gray-500 mt-4">
                   {selectedItem?.emoji} {selectedItem?.label} &middot; {selectedDiff?.label} &middot; {selectedQ?.id} Questions &middot; {selectedQ?.time}
+                </p>
+              )}
+            </motion.div>
+          )}
+
+          {/* ── STEP 4: Resume Upload (Optional) ── */}
+          {step === 4 && (
+            <motion.div key="step4" variants={containerVariants} initial="hidden" animate="visible" exit="exit">
+              <div className="flex items-center gap-3 mb-2">
+                <button onClick={goBack} className="text-gray-500 hover:text-white transition-colors">
+                  <X size={20} />
+                </button>
+                <h1 className="text-3xl font-black text-white">Upload Your Resume</h1>
+                <span className="text-xs font-semibold text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full ml-2">Optional</span>
+              </div>
+
+              <p className="text-gray-400 mb-8 ml-8">
+                Upload your resume and we'll tailor interview questions to your actual skills & experience.
+              </p>
+
+              {/* Session summary */}
+              <div className="ml-8 mb-8 flex items-center gap-2 flex-wrap">
+                <span className="text-gray-400 text-sm">Session:</span>
+                <span className="text-sm font-semibold text-white bg-white/8 border border-white/10 px-3 py-1 rounded-full">
+                  {selectedItem?.emoji} {selectedItem?.label}
+                </span>
+                <span className="text-gray-600">·</span>
+                <span className="text-sm font-semibold px-3 py-1 rounded-full"
+                  style={{ color: selectedDiff?.color, background: `${selectedDiff?.color}15`, border: `1px solid ${selectedDiff?.color}33` }}>
+                  {selectedDiff?.label}
+                </span>
+                <span className="text-gray-600">·</span>
+                <span className="text-sm font-semibold text-white bg-white/8 border border-white/10 px-3 py-1 rounded-full">
+                  {selectedQ?.id} Questions
+                </span>
+              </div>
+
+              {/* Upload Zone */}
+              {!resumeContext ? (
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={(e) => { e.preventDefault(); setDragOver(false); handleResumeUpload(e.dataTransfer.files[0]); }}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`relative rounded-3xl border-2 border-dashed p-12 text-center cursor-pointer transition-all duration-300 mb-8 ${
+                    dragOver
+                      ? 'border-gold-500 bg-gold-500/5 scale-[1.01]'
+                      : 'border-white/15 bg-white/3 hover:border-gold-500/40 hover:bg-white/5'
+                  }`}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf"
+                    className="hidden"
+                    onChange={(e) => handleResumeUpload(e.target.files[0])}
+                  />
+
+                  {resumeLoading ? (
+                    <div className="flex flex-col items-center gap-4">
+                      <Loader2 size={48} className="text-gold-400 animate-spin" />
+                      <p className="text-white font-semibold">Analyzing your resume...</p>
+                      <p className="text-gray-500 text-sm">Extracting skills, experience & education</p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-4">
+                      <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-gold-500/20 to-amber-600/10 border border-gold-500/20 flex items-center justify-center">
+                        <Upload size={32} className="text-gold-400" />
+                      </div>
+                      <div>
+                        <p className="text-white font-bold text-lg">Drag & drop your resume PDF here</p>
+                        <p className="text-gray-500 text-sm mt-1">or click to browse · PDF only · Max 5 MB</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {resumeError && (
+                    <p className="text-red-400 text-sm mt-4 font-medium">{resumeError}</p>
+                  )}
+                </div>
+              ) : (
+                /* Resume Parsed Successfully */
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="rounded-3xl border border-green-500/30 bg-green-500/5 p-6 mb-8"
+                >
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-2xl bg-green-500/15 border border-green-500/25 flex items-center justify-center">
+                        <FileText size={22} className="text-green-400" />
+                      </div>
+                      <div>
+                        <p className="text-white font-bold">{resumeContext.candidateName}</p>
+                        <p className="text-gray-400 text-xs">{resumeFile?.name} · {resumeContext.skills?.length || 0} skills detected</p>
+                      </div>
+                    </div>
+                    <button onClick={clearResume} className="text-gray-500 hover:text-red-400 transition-colors p-1">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+
+                  {/* Detected Skills */}
+                  {resumeContext.skills?.length > 0 && (
+                    <div className="mb-4">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Detected Skills</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {resumeContext.skills.map((skill) => (
+                          <span key={skill} className="text-xs font-medium text-gold-400 bg-gold-500/10 border border-gold-500/20 px-2.5 py-1 rounded-full capitalize">
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Experience */}
+                  {resumeContext.experienceLines?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Experience Highlights</p>
+                      <div className="space-y-1">
+                        {resumeContext.experienceLines.slice(0, 3).map((line, i) => (
+                          <p key={i} className="text-xs text-gray-400 truncate">• {line}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-4 flex items-center gap-2 text-xs text-green-400 font-semibold">
+                    <Sparkles size={14} />
+                    Questions will be tailored to your background
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Start Interview Button */}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleStart}
+                disabled={loading}
+                className="w-full btn-gold py-4 rounded-2xl text-base font-bold flex items-center justify-center gap-3 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                {loading ? (
+                  <><Loader2 size={20} className="animate-spin" />Starting Interview...</>
+                ) : (
+                  <><span>{resumeContext ? 'Start Personalized Interview' : 'Start Interview (Skip Resume)'}</span><ChevronRight size={20} /></>
+                )}
+              </motion.button>
+
+              {!resumeContext && (
+                <p className="text-center text-xs text-gray-500 mt-3">
+                  You can skip this step — questions will still be high quality, just not personalized to your resume.
                 </p>
               )}
             </motion.div>

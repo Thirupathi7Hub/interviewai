@@ -18,10 +18,10 @@ export function InterviewProvider({ children }) {
   };
 
   // ── startInterview ─────────────────────────────────────────────────────────
-  const startInterview = async (type, domain, totalQuestions = 5, difficulty = 'intermediate') => {
+  const startInterview = async (type, domain, totalQuestions = 5, difficulty = 'intermediate', resumeContext = null) => {
     setLastFeedback(null);
     try {
-      const res = await client.post('/interview/start', { type, domain, totalQuestions, difficulty });
+      const res = await client.post('/interview/start', { type, domain, totalQuestions, difficulty, resumeContext });
       const sessionData = {
         id:              res.data.interviewId,
         type,
@@ -30,6 +30,7 @@ export function InterviewProvider({ children }) {
         currentQuestion: res.data.question,
         questionIndex:   res.data.questionIndex,
         totalQuestions:  res.data.totalQuestions,
+        hasResume:       res.data.hasResume || false,
         qa: [],
       };
       setSession(sessionData);

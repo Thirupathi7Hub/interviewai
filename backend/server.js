@@ -8,6 +8,7 @@ import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import authRoutes      from './routes/auth.js';
 import userRoutes      from './routes/user.js';
 import interviewRoutes from './routes/interview.js';
+import resumeRoutes    from './routes/resume.js';
 
 const app  = express();
 const PORT = process.env.PORT || 5001;
@@ -28,22 +29,11 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '5mb' }));        // 5mb for base64 avatar uploads
 app.use(express.urlencoded({ limit: '5mb', extended: true }));
-// Session only needed for OAuth flow — use minimal config in production (JWT handles auth)
-if (process.env.NODE_ENV !== 'production') {
-  app.use(session({
-    secret:            process.env.SESSION_SECRET || 'dev_secret',
-    resave:            false,
-    saveUninitialized: false,
-  }));
-} else {
-  // In production, use session with explicit store to silence MemoryStore warning
-  app.use(session({
-    secret:            process.env.SESSION_SECRET || 'prod_secret',
-    resave:            false,
-    saveUninitialized: false,
-    cookie:            { secure: true, sameSite: 'none' },
-  }));
-}
+app.use(session({
+  secret:            process.env.SESSION_SECRET || 'dev_secret',
+  resave:            false,
+  saveUninitialized: false,
+}));
 
 // ─── Google OAuth (Passport) ─────────────────────────────────────────────────
 passport.use(new GoogleStrategy(
@@ -89,6 +79,7 @@ app.use(passport.initialize());
 app.use('/auth',           authRoutes);
 app.use('/api/user',       userRoutes);
 app.use('/api/interview',  interviewRoutes);
+app.use('/api/resume',     resumeRoutes);
 
 // ─── Health check ────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ status: 'ok', db: 'supabase' }));

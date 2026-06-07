@@ -90,7 +90,7 @@ async function callAIForEval(messages, plainPrompt) {
 }
 
 // ─── Question Generation ──────────────────────────────────────────────────
-export async function generateQuestion(type, domain, questionIndex, previousAnswers = [], isFollowUp = false, difficulty = 'intermediate') {
+export async function generateQuestion(type, domain, questionIndex, previousAnswers = [], isFollowUp = false, difficulty = 'intermediate', resumeContext = null) {
   if (USE_MOCK || !hasRealAI()) {
     return mockQuestion(type, domain, questionIndex, previousAnswers);
   }
@@ -105,8 +105,27 @@ export async function generateQuestion(type, domain, questionIndex, previousAnsw
     ? `Previous Q&A history: ${previousAnswers.slice(-2).map(a => `Q: ${a.question} | Answer: ${a.answer} | Score: ${a.score}/100`).join('; ')}`
     : 'This is the first question.';
 
+  // ── Build resume context block if provided ────────────────────────────────
+  let resumeBlock = '';
+  if (resumeContext) {
+    const { candidateName, skills = [], experienceLines = [], rawSummary = '' } = resumeContext;
+    resumeBlock = `
+CANDIDATE RESUME CONTEXT (use this to personalize questions):
+- Name: ${candidateName}
+- Key skills on resume: ${skills.slice(0, 12).join(', ')}
+${experienceLines.length ? `- Work experience snippets: ${experienceLines.slice(0, 3).join(' | ')}` : ''}
+- Resume excerpt: "${rawSummary.slice(0, 400)}"
+
+INSTRUCTIONS: Reference their actual skills and experience. Ask things like:
+"You listed [skill] on your resume — explain how you used it..." or
+"Tell me about a project where you applied [technology from resume]..."
+Make it feel personal to THEIR background, not generic.
+`;
+  }
+
   let systemMsg = `You are a professional technical interviewer. You are conducting a ${type} interview focused on "${domain}" at ${difficulty.toUpperCase()} difficulty.
 ${difficultyGuide}
+${resumeBlock}
 ${contextSummary}
 This is question number ${questionIndex + 1}.
 Return ONLY the question text — no preamble, no numbering, no extra commentary.`;
@@ -114,6 +133,7 @@ Return ONLY the question text — no preamble, no numbering, no extra commentary
   if (isFollowUp) {
     systemMsg = `You are a professional technical interviewer conducting a ${type} interview focused on "${domain}" at ${difficulty.toUpperCase()} difficulty.
 The candidate just provided an answer that was incomplete or lacked depth.
+${resumeBlock}
 ${contextSummary}
 Based on their last answer, ask a specific FOLLOW-UP question to prompt them to expand on the missing details or clarify their vague response.
 Keep it encouraging but probing. Example: "You mentioned X, but could you elaborate on Y?"
@@ -127,7 +147,7 @@ Return ONLY the follow-up question text — no preamble, no numbering, no extra 
 
   try {
     const question = await callAIForQuestion(messages, systemMsg);
-    console.log(`✅ AI generated question #${questionIndex + 1} [${difficulty}]`);
+    console.log(`✅ AI generated question #${questionIndex + 1} [${difficulty}]${resumeContext ? ' [resume-tailored]' : ''}`);
     return { question: question.trim(), questionIndex };
   } catch (err) {
     console.error('❌ AI question generation failed:', err.response?.data || err.message);

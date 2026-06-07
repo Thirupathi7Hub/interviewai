@@ -9,11 +9,11 @@ const router = express.Router();
 // Create a new interview session and get the first question
 router.post('/start', authMiddleware, async (req, res) => {
   try {
-    const { type, domain, totalQuestions: tq, difficulty = 'intermediate' } = req.body;
+    const { type, domain, totalQuestions: tq, difficulty = 'intermediate', resumeContext = null } = req.body;
     if (!type || !domain) return res.status(400).json({ error: 'type and domain are required' });
-    const totalQuestions = [5, 10, 20].includes(Number(tq)) ? Number(tq) : 5;
+    const totalQuestions = [5, 10, 15, 20].includes(Number(tq)) ? Number(tq) : 5;
 
-    const { question } = await generateQuestion(type, domain, 0, [], false, difficulty);
+    const { question } = await generateQuestion(type, domain, 0, [], false, difficulty, resumeContext);
 
     const interview = await Interview.create({
       userId: req.user.id,
@@ -21,7 +21,8 @@ router.post('/start', authMiddleware, async (req, res) => {
       domain,
       totalQuestions,
       status: 'active',
-      qa: [{ question, answer: '', score: 0, _difficulty: difficulty }],  // ← store difficulty
+      resumeContext,   // ← store for all future questions in this session
+      qa: [{ question, answer: '', score: 0, _difficulty: difficulty }],
     });
 
     res.status(201).json({
@@ -30,6 +31,7 @@ router.post('/start', authMiddleware, async (req, res) => {
       questionIndex: 0,
       totalQuestions,
       difficulty,
+      hasResume: !!resumeContext,
     });
   } catch (err) {
     console.error('Start error:', err);
@@ -57,8 +59,9 @@ router.post('/answer', authMiddleware, async (req, res) => {
     const nextIndex = questionIndex + 1;
     const isLast = nextIndex >= TOTAL_QUESTIONS;
 
-    // Retrieve difficulty stored in first QA entry
-    const difficulty = interview.qa[0]?._difficulty || 'intermediate';
+    // Retrieve difficulty and resumeContext stored at interview start
+    const difficulty     = interview.qa[0]?._difficulty || 'intermediate';
+    const resumeContext  = interview.resumeContext || null;
 
     // ⚡ Run evaluation + next question generation IN PARALLEL (cuts latency in half)
     const parallelTasks = [evaluateAnswer(
@@ -76,7 +79,8 @@ router.post('/answer', authMiddleware, async (req, res) => {
         nextIndex,
         interview.qa,
         false,         // isFollowUp determined after evaluation — see below
-        difficulty
+        difficulty,
+        resumeContext  // ← always pass resume context if available
       ));
     }
 
@@ -154,7 +158,7 @@ router.post('/answer', authMiddleware, async (req, res) => {
       isFollowUp = true;
       // Regenerate as follow-up (short extra call, but gives targeted follow-up)
       const followUp = await generateQuestion(
-        interview.type, interview.domain, nextIndex, interview.qa, true, difficulty
+        interview.type, interview.domain, nextIndex, interview.qa, true, difficulty, resumeContext
       );
       nextQuestion = followUp.question;
     }

@@ -14,6 +14,7 @@ function toInterview(data) {
     qa:             data.qa              ?? [],
     strengths:      data.strengths       ?? [],
     improvements:   data.improvements   ?? [],
+    resumeContext:  data.resume_context  ?? null,  // ← resume tailoring data
   };
   // Attach a save() method that persists changes back to Supabase
   obj.save = async () => {
@@ -50,6 +51,7 @@ export const Interview = {
         score_breakdown:{},
         strengths:      [],
         improvements:   [],
+        resume_context: data.resumeContext  ?? null,  // ← store resume context
       })
       .select()
       .single();
