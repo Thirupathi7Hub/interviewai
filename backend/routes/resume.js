@@ -1,89 +1,67 @@
 import express from 'express';
-import multer from 'multer';
-import { createRequire } from 'module';
 import authMiddleware from '../middleware/auth.js';
 
-const require = createRequire(import.meta.url);
 const router = express.Router();
 
-// Store file in memory (no disk write needed)
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB max
-  fileFilter: (_, file, cb) => {
-    if (file.mimetype === 'application/pdf') cb(null, true);
-    else cb(new Error('Only PDF files are accepted'));
-  },
-});
-
 // ─── POST /api/resume/parse ───────────────────────────────────────────────────
-router.post('/parse', authMiddleware, upload.single('resume'), async (req, res) => {
+// Accepts plain extracted text from a PDF resume (parsed on the frontend)
+// and returns structured context to inject into interview question prompts.
+router.post('/parse', authMiddleware, async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: 'No PDF file uploaded' });
+    const { text, fileName } = req.body;
 
-    // Lazy-load pdf-parse to avoid its test file scan at module startup
-    const pdfParse = require('pdf-parse');
-    const data = await pdfParse(req.file.buffer);
-    const text = data.text || '';
-
-    if (!text.trim()) {
-      return res.status(422).json({ error: 'Could not extract text. Try a non-scanned PDF.' });
+    if (!text || typeof text !== 'string' || text.trim().length < 50) {
+      return res.status(400).json({ error: 'Resume text is too short or missing.' });
     }
 
-    // ── Extract structured info from raw text ────────────────────────────────
     const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
 
-    // Name: usually the first non-empty line
+    // Name: usually the first meaningful non-empty line
     const candidateName = lines[0] || 'Candidate';
 
-    // Skills: find lines containing common skill keywords
+    // Skills: match known skill keywords anywhere in the text
     const skillKeywords = [
       'javascript','typescript','python','java','react','node','express','mongodb',
       'sql','postgresql','mysql','redis','docker','kubernetes','aws','azure','gcp',
       'git','html','css','tailwind','next','vue','angular','graphql','rest','api',
       'machine learning','deep learning','tensorflow','pytorch','pandas','numpy',
       'c++','c#','golang','rust','kotlin','swift','flutter','dart','php','ruby',
-      'linux','bash','ci/cd','agile','scrum','figma','photoshop',
+      'linux','bash','ci/cd','agile','scrum','figma','photoshop','spring','django',
     ];
-    const foundSkills = [];
     const textLower = text.toLowerCase();
-    for (const skill of skillKeywords) {
-      if (textLower.includes(skill)) foundSkills.push(skill);
-    }
+    const foundSkills = skillKeywords.filter(skill => textLower.includes(skill));
 
-    // Experience: look for lines with year patterns (e.g. 2020 - 2023, Jan 2022)
+    // Experience: lines that mention years (e.g. "2020 - 2023", "Jan 2022")
     const yearPattern = /\b(19|20)\d{2}\b/;
-    const experienceLines = lines.filter(l => yearPattern.test(l) && l.length > 10).slice(0, 6);
+    const experienceLines = lines
+      .filter(l => yearPattern.test(l) && l.length > 10)
+      .slice(0, 6);
 
-    // Education: look for degree/university keywords
-    const eduKeywords = ['bachelor', 'master', 'b.tech', 'm.tech', 'b.e', 'm.e', 'bsc', 'msc',
-      'university', 'college', 'institute', 'degree', 'diploma'];
-    const educationLines = lines.filter(l =>
-      eduKeywords.some(k => l.toLowerCase().includes(k))
-    ).slice(0, 3);
+    // Education: lines mentioning degrees or institutions
+    const eduKeywords = ['bachelor', 'master', 'b.tech', 'm.tech', 'b.e', 'm.e',
+      'bsc', 'msc', 'university', 'college', 'institute', 'degree', 'diploma'];
+    const educationLines = lines
+      .filter(l => eduKeywords.some(k => l.toLowerCase().includes(k)))
+      .slice(0, 3);
 
-    // Build a clean summary (first 1200 chars of text, stripped of extra whitespace)
-    const cleanedText = text.replace(/\s+/g, ' ').trim().slice(0, 1200);
+    // Clean summary for AI prompt injection (first 1200 chars)
+    const rawSummary = text.replace(/\s+/g, ' ').trim().slice(0, 1200);
 
     const resumeContext = {
       candidateName,
-      skills: foundSkills.slice(0, 20),
+      skills:          foundSkills.slice(0, 20),
       experienceLines,
       educationLines,
-      rawSummary: cleanedText,  // full context injected into question prompt
-      fileName: req.file.originalname,
-      charCount: text.length,
+      rawSummary,
+      fileName:        fileName || 'resume.pdf',
     };
 
-    console.log(`📄 Resume parsed: ${candidateName} | ${foundSkills.length} skills found`);
+    console.log(`📄 Resume parsed: ${candidateName} | ${foundSkills.length} skills`);
     res.json(resumeContext);
 
   } catch (err) {
     console.error('Resume parse error:', err.message);
-    if (err.message?.includes('Only PDF')) {
-      return res.status(400).json({ error: err.message });
-    }
-    res.status(500).json({ error: 'Failed to parse resume. Please try again.' });
+    res.status(500).json({ error: 'Failed to process resume. Please try again.' });
   }
 });
 

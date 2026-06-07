@@ -105,7 +105,7 @@ export default function SubjectSelectionPage() {
   const selectedDiff = difficulties.find(d => d.id === difficulty);
   const selectedQ    = questionCounts.find(q => q.id === qCount);
 
-  // ── Resume upload handler ─────────────────────────────────────────────────
+  // ── Resume upload handler (client-side PDF extraction) ───────────────────
   const handleResumeUpload = useCallback(async (file) => {
     if (!file || file.type !== 'application/pdf') {
       setResumeError('Please upload a PDF file.');
@@ -119,14 +119,37 @@ export default function SubjectSelectionPage() {
     setResumeLoading(true);
     setResumeFile(file);
     try {
-      const formData = new FormData();
-      formData.append('resume', file);
-      const res = await client.post('/resume/parse', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      // ── Step 1: Extract text from PDF in the browser using pdfjs-dist ──
+      const pdfjsLib = await import('pdfjs-dist');
+      pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+        'pdfjs-dist/build/pdf.worker.min.mjs',
+        import.meta.url
+      ).toString();
+
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = '';
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const page = await pdf.getPage(p);
+        const content = await page.getTextContent();
+        fullText += content.items.map(i => i.str).join(' ') + '\n';
+      }
+
+      if (!fullText.trim() || fullText.trim().length < 50) {
+        setResumeError('Could not extract text. Try a non-scanned PDF.');
+        setResumeFile(null);
+        return;
+      }
+
+      // ── Step 2: Send extracted text to backend for structured parsing ──
+      const res = await client.post('/resume/parse', {
+        text: fullText,
+        fileName: file.name,
       });
       setResumeContext(res.data);
     } catch (err) {
-      setResumeError(err.response?.data?.error || 'Failed to parse resume.');
+      console.error('Resume upload error:', err);
+      setResumeError(err.response?.data?.error || 'Failed to parse resume. Try another PDF.');
       setResumeFile(null);
     } finally {
       setResumeLoading(false);
