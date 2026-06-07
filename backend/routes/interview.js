@@ -146,6 +146,7 @@ router.post('/answer', authMiddleware, async (req, res) => {
           type: interview.type,
           domain: interview.domain,
           completedAt: interview.completedAt,
+          resumeContext: interview.resumeContext,
         },
       });
     }

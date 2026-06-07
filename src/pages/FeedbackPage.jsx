@@ -115,9 +115,13 @@ export default function FeedbackPage() {
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gold-500/10 border border-gold-500/20 text-gold-400 text-xs font-semibold uppercase tracking-widest mb-4">
             ✓ Interview Report
           </div>
-          <h1 className="text-3xl sm:text-4xl font-black text-white">Your Performance Report</h1>
+          <h1 className="text-3xl sm:text-4xl font-black text-white">
+            {feedback.type === 'Resume'
+              ? `${user?.name || feedback.resumeContext?.candidateName || 'Candidate'}'s Resume Interview Report`
+              : 'Your Performance Report'}
+          </h1>
           <p className="text-gray-400 mt-2 text-sm">
-            {feedback.type} Interview · {feedback.domain} ·{' '}
+            {feedback.type === 'Resume' ? 'Resume-Based' : feedback.type} Interview &middot; {feedback.type === 'Resume' ? 'AI Personalised' : feedback.domain} &middot;{' '}
             {new Date(feedback.completedAt || Date.now()).toLocaleDateString(undefined, {
               month: 'long', day: 'numeric', year: 'numeric',
             })}

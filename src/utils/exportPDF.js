@@ -103,10 +103,11 @@ function buildHTML(fb, userName) {
   const score   = fb.finalScore || 0;
   const { label: gl, color: gc } = grade(score);
 
-  const domain  = fb.domain || 'Technical';
-  const type    = fb.type   || 'Interview';
-  const mode    = type.charAt(0).toUpperCase() + type.slice(1);
-  const dateStr = new Date(fb.completedAt || Date.now())
+  const isResume = fb.type === 'Resume';
+  const domain   = isResume ? 'AI Personalised' : (fb.domain || 'Technical');
+  const type     = isResume ? 'Resume-Based' : (fb.type || 'Interview');
+  const mode     = isResume ? 'Resume' : (type.charAt(0).toUpperCase() + type.slice(1));
+  const dateStr  = new Date(fb.completedAt || Date.now())
     .toLocaleDateString('en-US', { day:'numeric', month:'long', year:'numeric' });
 
   const bd   = fb.scoreBreakdown || {};

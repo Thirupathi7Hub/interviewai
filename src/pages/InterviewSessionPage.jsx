@@ -5,6 +5,7 @@ import {
   Send, Mic, MicOff, ChevronLeft, Clock, Camera, CameraOff, User, MonitorPlay
 } from 'lucide-react';
 import { useInterview } from '../context/InterviewContext';
+import { useAuth } from '../context/AuthContext';
 import { useProctoring } from '../hooks/useProctoring';
 import { useAIConfidence } from '../hooks/useAIConfidence';
 import ProctoringOverlay from '../components/ProctoringOverlay';
@@ -25,6 +26,7 @@ function useTimer(initial = 0) {
 export default function InterviewSessionPage() {
   const navigate = useNavigate();
   const { activeSession, activeSessionRef, submitAnswer, endInterviewEarly } = useInterview();
+  const { user } = useAuth();
 
   // Guard: redirect to /select if no active session — but NOT while ending (race condition)
   const isEndingRef = useRef(false);
@@ -237,12 +239,13 @@ export default function InterviewSessionPage() {
     if (aiCharacter && activeSession && messages.length === 0) {
       timer.setRunning(true);
       const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const candidateName = user?.name || 'Candidate';
 
       // For resume-based interviews don't mention the raw domain (candidate name)
       const isResume  = activeSession.type === 'Resume';
       const greeting  = isResume
-        ? `Hello! I'm your AI interviewer. I've reviewed your resume and I'll be asking questions tailored specifically to your background and experience. Let's begin.`
-        : `Hello! I'm your AI interviewer. We'll be conducting a ${activeSession.type} interview for ${activeSession.domain}. Let's begin.`;
+        ? `Hello ${candidateName}! I'm your AI interviewer. I've reviewed your resume and I'll be asking questions tailored specifically to your background and experience. Let's begin.`
+        : `Hello ${candidateName}! I'm your AI interviewer. We'll be conducting a ${activeSession.type} interview for ${activeSession.domain}. Let's begin.`;
 
       setMessages([{
         id: 'initial', role: 'ai',
@@ -250,7 +253,7 @@ export default function InterviewSessionPage() {
         time: now,
       }]);
     }
-  }, [aiCharacter, activeSession]);
+  }, [aiCharacter, activeSession, user]);
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
