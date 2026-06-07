@@ -108,18 +108,16 @@ export async function generateQuestion(type, domain, questionIndex, previousAnsw
   // ── Build resume context block if provided ────────────────────────────────
   let resumeBlock = '';
   if (resumeContext) {
-    const { candidateName, skills = [], experienceLines = [], rawSummary = '' } = resumeContext;
+    const { candidateName, skills = [], experienceLines = [], educationLines = [] } = resumeContext;
     resumeBlock = `
-CANDIDATE RESUME CONTEXT (use this to personalize questions):
-- Name: ${candidateName}
-- Key skills on resume: ${skills.slice(0, 12).join(', ')}
-${experienceLines.length ? `- Work experience snippets: ${experienceLines.slice(0, 3).join(' | ')}` : ''}
-- Resume excerpt: "${rawSummary.slice(0, 400)}"
+CANDIDATE BACKGROUND (for personalizing questions — do NOT repeat or quote this in your output):
+- Candidate: ${candidateName}
+- Skills listed: ${skills.slice(0, 12).join(', ')}
+${experienceLines.length ? `- Recent experience: ${experienceLines.slice(0, 2).join(' | ')}` : ''}
+${educationLines.length ? `- Education: ${educationLines[0]}` : ''}
 
-INSTRUCTIONS: Reference their actual skills and experience. Ask things like:
-"You listed [skill] on your resume — explain how you used it..." or
-"Tell me about a project where you applied [technology from resume]..."
-Make it feel personal to THEIR background, not generic.
+Ask about their actual listed skills and project experience. Reference specifics from their background.
+CRITICAL: Your output must be ONLY the question. Never echo this resume data back.
 `;
   }
 
@@ -128,7 +126,7 @@ ${difficultyGuide}
 ${resumeBlock}
 ${contextSummary}
 This is question number ${questionIndex + 1}.
-Return ONLY the question text — no preamble, no numbering, no extra commentary.`;
+IMPORTANT: Return ONLY the question text — no introduction, no preamble, no numbering, no commentary, no resume data.`;
 
   if (isFollowUp) {
     systemMsg = `You are a professional technical interviewer conducting a ${type} interview focused on "${domain}" at ${difficulty.toUpperCase()} difficulty.

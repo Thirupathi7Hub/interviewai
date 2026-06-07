@@ -82,8 +82,7 @@ function ResumeInterviewPanel({ onClose }) {
     if (!resumeCtx || starting) return;
     setStarting(true);
     try {
-      // Use "role" as type and candidate name as domain for resume-based
-      await startInterview('Resume', resumeCtx.candidateName || 'General', 5, 'intermediate', resumeCtx);
+      await startInterview('Resume', 'Resume Interview', 5, 'intermediate', resumeCtx);
       navigate('/session');
     } catch {
       setError('Failed to start interview. Please try again.');

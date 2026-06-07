@@ -237,10 +237,17 @@ export default function InterviewSessionPage() {
     if (aiCharacter && activeSession && messages.length === 0) {
       timer.setRunning(true);
       const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      // For resume-based interviews don't mention the raw domain (candidate name)
+      const isResume  = activeSession.type === 'Resume';
+      const greeting  = isResume
+        ? `Hello! I'm your AI interviewer. I've reviewed your resume and I'll be asking questions tailored specifically to your background and experience. Let's begin.`
+        : `Hello! I'm your AI interviewer. We'll be conducting a ${activeSession.type} interview for ${activeSession.domain}. Let's begin.`;
+
       setMessages([{
         id: 'initial', role: 'ai',
-        content: `Hello! I'm your AI interviewer. We'll be conducting a ${activeSession.type} interview for ${activeSession.domain}. Let's begin.\n\n${activeSession.currentQuestion}`,
-        time: now
+        content: `${greeting}\n\n${activeSession.currentQuestion}`,
+        time: now,
       }]);
     }
   }, [aiCharacter, activeSession]);
