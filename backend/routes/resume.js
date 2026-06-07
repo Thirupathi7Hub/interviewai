@@ -1,6 +1,8 @@
 import express from 'express';
 import multer from 'multer';
-import pdfParse from 'pdf-parse';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const pdfParse = require('pdf-parse');
 import authMiddleware from '../middleware/auth.js';
 
 const router = express.Router();
