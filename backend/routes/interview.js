@@ -1,23 +1,18 @@
 import express from 'express';
 import Interview from '../models/Interview.js';
-import { User } from '../models/User.js';
 import authMiddleware from '../middleware/auth.js';
 import { generateQuestion, evaluateAnswer } from '../services/aiService.js';
 
 const router = express.Router();
 
 // ─── POST /api/interview/start ────────────────────────────────────────────────
-// Create a new interview session and get the first question
 router.post('/start', authMiddleware, async (req, res) => {
   try {
-    const { type, domain, totalQuestions: tq, difficulty = 'intermediate' } = req.body;
+    const { type, domain, totalQuestions: tq, difficulty = 'intermediate', resumeContext = null } = req.body;
     if (!type || !domain) return res.status(400).json({ error: 'type and domain are required' });
     const totalQuestions = [5, 10, 15, 20].includes(Number(tq)) ? Number(tq) : 5;
 
-    // Auto-load resume from user profile (set on Dashboard)
-    const userProfile   = await User.findById(req.user.id);
-    const resumeContext = userProfile?.resumeContext || null;
-    if (resumeContext) console.log(`📄 Using saved resume for ${userProfile.name}`);
+    if (resumeContext) console.log(`📄 Resume-based interview starting`);
 
     const { question } = await generateQuestion(type, domain, 0, [], false, difficulty, resumeContext);
 
