@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   BarChart2, Trophy, TrendingUp, ArrowRight, Calendar, Star,
   Upload, FileText, Sparkles, Trash2, Loader2, ChevronRight, X,
-  Brain, CheckSquare, Zap
+  Brain, CheckSquare
 } from 'lucide-react';
 import Navbar from '../components/Navbar.jsx';
 import StatCard from '../components/StatCard.jsx';
@@ -196,83 +196,12 @@ function ResumeInterviewPanel({ onClose }) {
   );
 }
 
-// ─── Aptitude Master Panel ────────────────────────────────────────────────────
-function AptitudeMasterPanel({ onClose }) {
-  const navigate = useNavigate();
-  const [difficulty, setDifficulty] = useState('intermediate');
-  const [count,      setCount]      = useState(10);
-
-  const difficulties = [
-    { key: 'beginner',     label: 'Beginner',     emoji: '🌱', desc: 'Easy concepts & basic patterns' },
-    { key: 'intermediate', label: 'Intermediate',  emoji: '⚡', desc: 'Word problems & logic puzzles' },
-    { key: 'expert',       label: 'Expert',        emoji: '🔥', desc: 'Advanced reasoning & analysis' },
-  ];
-  const counts = [5, 10, 20];
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 8 }} transition={{ duration: 0.3 }}
-      className="mt-4 rounded-3xl border border-teal-500/20 bg-teal-500/5 p-5"
-    >
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Brain size={14} className="text-teal-400" />
-          <span className="text-sm font-bold text-white">Configure Quiz</span>
-        </div>
-        <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors"><X size={16} /></button>
-      </div>
-
-      {/* Difficulty */}
-      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Difficulty</p>
-      <div className="flex gap-2 mb-4">
-        {difficulties.map(d => (
-          <button key={d.key} onClick={() => setDifficulty(d.key)}
-            className={`flex-1 flex flex-col items-center gap-1 py-2.5 px-2 rounded-2xl border text-xs font-bold transition-all ${
-              difficulty === d.key
-                ? 'bg-teal-500/15 border-teal-500/40 text-teal-300'
-                : 'bg-white/3 border-white/8 text-gray-400 hover:border-teal-500/20'
-            }`}>
-            <span className="text-lg">{d.emoji}</span>
-            <span>{d.label}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* Count */}
-      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Questions</p>
-      <div className="flex gap-2 mb-5">
-        {counts.map(c => (
-          <button key={c} onClick={() => setCount(c)}
-            className={`flex-1 py-2.5 rounded-2xl border text-sm font-black transition-all ${
-              count === c
-                ? 'bg-teal-500/15 border-teal-500/40 text-teal-300'
-                : 'bg-white/3 border-white/8 text-gray-400 hover:border-teal-500/20'
-            }`}>
-            {c}
-          </button>
-        ))}
-      </div>
-
-      <motion.button
-        whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-        onClick={() => navigate('/aptitude', { state: { difficulty, count } })}
-        className="w-full py-3 rounded-2xl text-sm font-bold flex items-center justify-center gap-2"
-        style={{ background: 'linear-gradient(135deg, #0d9488, #0891b2)', color: 'white' }}
-      >
-        <Zap size={15} /> Start Quiz — {count} Questions
-      </motion.button>
-    </motion.div>
-  );
-}
-
 // ─── Dashboard Page ───────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const navigate  = useNavigate();
   const { user }  = useAuth();
   const { history, historyStats, fetchHistory } = useInterview();
-  const [showResumePanel,   setShowResumePanel]   = useState(false);
-  const [showAptitudePanel, setShowAptitudePanel] = useState(false);
+  const [showResumePanel, setShowResumePanel] = useState(false);
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
 
@@ -391,13 +320,8 @@ export default function DashboardPage() {
 
           {/* Card 3 — Aptitude Master */}
           <div
-            className={`relative overflow-hidden rounded-3xl border p-7 transition-all duration-300 ${
-              showAptitudePanel ? 'border-teal-500/40' : 'border-teal-500/20'
-            }`}
-            style={{ background: showAptitudePanel
-              ? 'linear-gradient(135deg, rgba(13,148,136,0.12) 0%, rgba(8,145,178,0.06) 100%)'
-              : 'linear-gradient(135deg, rgba(13,148,136,0.07) 0%, rgba(8,145,178,0.03) 100%)'
-            }}
+            className="relative overflow-hidden rounded-3xl border border-teal-500/20 p-7"
+            style={{ background: 'linear-gradient(135deg, rgba(13,148,136,0.07) 0%, rgba(8,145,178,0.03) 100%)' }}
           >
             <div className="absolute right-0 top-0 w-48 h-48 opacity-10 pointer-events-none"
               style={{ background: 'radial-gradient(circle at 80% 20%, #0d9488, transparent)' }} />
@@ -415,20 +339,13 @@ export default function DashboardPage() {
               </p>
               <motion.button
                 whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                onClick={() => { setShowResumePanel(false); setShowAptitudePanel(v => !v); }}
+                onClick={() => navigate('/aptitude/select')}
                 className="px-6 py-3 rounded-2xl text-sm font-bold flex items-center gap-2 transition-all"
                 style={{ background: 'linear-gradient(135deg, #0d9488, #0891b2)', color: 'white' }}
               >
-                <Brain size={15} /> Configure &amp; Start
+                <Brain size={15} /> Start Aptitude Quiz <ArrowRight size={16} />
               </motion.button>
             </div>
-
-            {/* Inline aptitude panel */}
-            <AnimatePresence>
-              {showAptitudePanel && (
-                <AptitudeMasterPanel onClose={() => setShowAptitudePanel(false)} />
-              )}
-            </AnimatePresence>
           </div>
         </motion.div>
 
