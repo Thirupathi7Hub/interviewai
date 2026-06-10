@@ -4,11 +4,10 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   ChevronRight, ChevronLeft, Clock, CheckCircle2,
   XCircle, AlertCircle, Trophy, BookOpen, Zap, BarChart3,
-  Download, Loader2, RotateCcw
+  RotateCcw
 } from 'lucide-react';
 import Navbar from '../components/Navbar.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
-import { exportInterviewPDF } from '../utils/exportPDF.js';
 import client from '../api/client';
 
 const DIFF_LABELS = { beginner: 'Beginner', intermediate: 'Intermediate', expert: 'Expert' };
@@ -61,8 +60,7 @@ function LoadingScreen({ difficulty, count }) {
 
 // ─── Result Page ───────────────────────────────────────────────────────────────
 function ResultsPage({ questions, answers, difficulty, timeTaken, savedResult, userName }) {
-  const navigate    = useNavigate();
-  const [pdfLoading, setPdfLoading] = useState(false);
+  const navigate = useNavigate();
 
   const correct = answers.filter((a, i) => a === questions[i].correct).length;
   const total   = questions.length;
@@ -77,37 +75,6 @@ function ResultsPage({ questions, answers, difficulty, timeTaken, savedResult, u
 
   const mm = String(Math.floor(timeTaken / 60)).padStart(2, '0');
   const ss = String(timeTaken % 60).padStart(2, '0');
-
-  const handleDownloadPDF = async () => {
-    setPdfLoading(true);
-    try {
-      // Build a feedback object matching the shape exportInterviewPDF expects
-      const feedbackData = {
-        type:           'Aptitude',
-        domain:         `Aptitude Quiz · ${DIFF_LABELS[difficulty]}`,
-        finalScore:     score,
-        scoreBreakdown: { content: score, communication: score, confidence: score },
-        strengths:      savedResult?.strengths  || [`${correct} / ${total} correct`],
-        improvements:   savedResult?.improvements || [],
-        completedAt:    savedResult?.completedAt || new Date().toISOString(),
-        // Build QA with MCQ-compatible shape for exportPDF
-        qa: questions.map((q, i) => ({
-          question:       q.question,
-          answer:         answers[i] ? `(${answers[i]}) ${q.options[answers[i]]}` : 'Skipped',
-          score:          answers[i] === q.correct ? 100 : 0,
-          isCorrect:      answers[i] === q.correct,
-          correctOption:  q.correct,
-          correctText:    q.options[q.correct],
-          options:        q.options,
-          suggestedAnswer: q.explanation || '',
-        })),
-      };
-
-      await exportInterviewPDF(feedbackData, userName || 'Candidate');
-    } finally {
-      setPdfLoading(false);
-    }
-  };
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-h-screen bg-[#0a0a0a]">
@@ -223,13 +190,6 @@ function ResultsPage({ questions, answers, difficulty, timeTaken, savedResult, u
             onClick={() => navigate('/dashboard')}
             className="px-6 py-3 rounded-2xl text-sm font-bold border border-white/10 text-gray-300 hover:text-white hover:bg-white/5 transition-all">
             Back to Dashboard
-          </motion.button>
-
-          <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-            onClick={handleDownloadPDF} disabled={pdfLoading}
-            className="px-6 py-3 rounded-2xl text-sm font-bold flex items-center gap-2 border border-teal-500/30 text-teal-400 hover:bg-teal-500/10 transition-all disabled:opacity-50">
-            {pdfLoading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-            {pdfLoading ? 'Generating PDF…' : 'Download PDF Report'}
           </motion.button>
 
           <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}

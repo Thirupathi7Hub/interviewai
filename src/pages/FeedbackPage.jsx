@@ -145,34 +145,37 @@ export default function FeedbackPage() {
               </div>
             </div>
 
-            <div className="flex-1 w-full flex flex-col gap-5">
-              {breakdown.map((item, i) => (
-                <motion.div
-                  key={item.label}
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.3 + i * 0.1 }}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-7 h-7 rounded-lg ${item.bg} flex items-center justify-center`}>
-                        <item.icon size={14} className={item.color} />
+            {/* Only show Content/Communication/Confidence bars for non-Aptitude types */}
+            {feedback.type !== 'Aptitude' && (
+              <div className="flex-1 w-full flex flex-col gap-5">
+                {breakdown.map((item, i) => (
+                  <motion.div
+                    key={item.label}
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.3 + i * 0.1 }}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-7 h-7 rounded-lg ${item.bg} flex items-center justify-center`}>
+                          <item.icon size={14} className={item.color} />
+                        </div>
+                        <span className="text-sm font-medium text-gray-200">{item.label}</span>
                       </div>
-                      <span className="text-sm font-medium text-gray-200">{item.label}</span>
+                      <span className="text-lg font-black text-white tabular-nums">{item.score}</span>
                     </div>
-                    <span className="text-lg font-black text-white tabular-nums">{item.score}</span>
-                  </div>
-                  <div className="w-full h-2 rounded-full bg-white/8">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${item.score}%` }}
-                      transition={{ delay: 0.4 + i * 0.1, duration: 1, ease: 'easeOut' }}
-                      className={`h-full rounded-full ${item.bar}`}
-                    />
-                  </div>
-                </motion.div>
-              ))}
-            </div>
+                    <div className="w-full h-2 rounded-full bg-white/8">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${item.score}%` }}
+                        transition={{ delay: 0.4 + i * 0.1, duration: 1, ease: 'easeOut' }}
+                        className={`h-full rounded-full ${item.bar}`}
+                      />
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
           </div>
         </motion.div>
 
@@ -295,15 +298,18 @@ export default function FeedbackPage() {
           transition={{ delay: 0.6 }}
           className="flex flex-col sm:flex-row gap-3 justify-center pb-12"
         >
-          <motion.button
-            whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-            onClick={handleExportPDF}
-            disabled={exportingPDF}
-            className="btn-gold flex items-center justify-center gap-2 px-8 py-3.5 rounded-2xl text-sm font-bold shadow-gold-md disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {exportingPDF ? <Loader2 size={16} className="animate-spin" /> : <FileDown size={16} />}
-            {exportingPDF ? 'Generating...' : 'Download PDF Report'}
-          </motion.button>
+          {/* Hide PDF export for Aptitude quizzes */}
+          {feedback.type !== 'Aptitude' && (
+            <motion.button
+              whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+              onClick={handleExportPDF}
+              disabled={exportingPDF}
+              className="btn-gold flex items-center justify-center gap-2 px-8 py-3.5 rounded-2xl text-sm font-bold shadow-gold-md disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {exportingPDF ? <Loader2 size={16} className="animate-spin" /> : <FileDown size={16} />}
+              {exportingPDF ? 'Generating...' : 'Download PDF Report'}
+            </motion.button>
+          )}
 
           <motion.button
             whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
