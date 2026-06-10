@@ -1,5 +1,5 @@
 import express from 'express';
-import { authMiddleware } from '../middleware/auth.js';
+import authMiddleware from '../middleware/auth.js';
 import { generateAptitudeQuestions } from '../services/aiService.js';
 
 const router = express.Router();
