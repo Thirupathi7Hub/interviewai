@@ -11,6 +11,7 @@ import ProfilePage from './pages/ProfilePage.jsx';
 import AuthCallbackPage from './pages/AuthCallbackPage.jsx';
 import AptitudeSessionPage from './pages/AptitudeSessionPage.jsx';
 import AptitudeSelectPage from './pages/AptitudeSelectPage.jsx';
+import ResumeUploadPage from './pages/ResumeUploadPage.jsx';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -36,6 +37,7 @@ function AppRoutes() {
         <Route path="/feedback"     element={<ProtectedRoute><FeedbackPage /></ProtectedRoute>} />
         <Route path="/feedback/:id" element={<ProtectedRoute><FeedbackPage /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+        <Route path="/resume/upload" element={<ProtectedRoute><ResumeUploadPage /></ProtectedRoute>} />
         <Route path="/aptitude/select" element={<ProtectedRoute><AptitudeSelectPage /></ProtectedRoute>} />
         <Route path="/aptitude" element={<ProtectedRoute><AptitudeSessionPage /></ProtectedRoute>} />
         <Route path="/oauth/callback" element={<AuthCallbackPage />} />

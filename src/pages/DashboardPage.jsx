@@ -1,10 +1,9 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart2, Trophy, TrendingUp, ArrowRight, Calendar, Star,
-  Upload, FileText, Sparkles, Trash2, Loader2, ChevronRight, X,
-  Brain, CheckSquare
+  Upload, Sparkles, Brain, CheckSquare
 } from 'lucide-react';
 import Navbar from '../components/Navbar.jsx';
 import StatCard from '../components/StatCard.jsx';
@@ -201,7 +200,6 @@ export default function DashboardPage() {
   const navigate  = useNavigate();
   const { user }  = useAuth();
   const { history, historyStats, fetchHistory } = useInterview();
-  const [showResumePanel, setShowResumePanel] = useState(false);
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
 
@@ -268,7 +266,7 @@ export default function DashboardPage() {
               </p>
               <motion.button
                 whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                onClick={() => { setShowResumePanel(false); navigate('/select'); }}
+                onClick={() => navigate('/select')}
                 className="btn-gold px-6 py-3 rounded-2xl text-sm font-bold flex items-center gap-2"
               >
                 Start Interview <ArrowRight size={16} />
@@ -302,20 +300,13 @@ export default function DashboardPage() {
               </p>
               <motion.button
                 whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                onClick={() => setShowResumePanel(v => !v)}
+                onClick={() => navigate('/resume/upload')}
                 className="px-6 py-3 rounded-2xl text-sm font-bold flex items-center gap-2 transition-all"
                 style={{ background: 'linear-gradient(135deg, #7c3aed, #9333ea)', color: 'white' }}
               >
-                <Upload size={15} /> Upload Resume & Start
+                <Upload size={15} /> Upload Resume &amp; Start
               </motion.button>
             </div>
-
-            {/* Inline resume panel */}
-            <AnimatePresence>
-              {showResumePanel && (
-                <ResumeInterviewPanel onClose={() => setShowResumePanel(false)} />
-              )}
-            </AnimatePresence>
           </div>
 
           {/* Card 3 — Aptitude Master */}
