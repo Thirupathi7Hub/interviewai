@@ -134,7 +134,7 @@ export default function FeedbackPage() {
           transition={{ delay: 0.15 }}
           className="glass rounded-3xl border border-white/8 p-8 mb-6"
         >
-          <div className="flex flex-col md:flex-row items-center gap-10">
+          <div className={`flex flex-col md:flex-row items-center gap-10 ${feedback.type === 'Aptitude' ? 'justify-center' : ''}`}>
             <div className="flex flex-col items-center gap-3">
               <ScoreGauge score={overallScore} size={180} strokeWidth={12} />
               <div className="text-center">
