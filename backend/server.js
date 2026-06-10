@@ -9,6 +9,7 @@ import authRoutes      from './routes/auth.js';
 import userRoutes      from './routes/user.js';
 import interviewRoutes from './routes/interview.js';
 import resumeRoutes    from './routes/resume.js';
+import aptitudeRoutes  from './routes/aptitude.js';
 
 const app  = express();
 const PORT = process.env.PORT || 5001;
@@ -80,6 +81,7 @@ app.use('/auth',           authRoutes);
 app.use('/api/user',       userRoutes);
 app.use('/api/interview',  interviewRoutes);
 app.use('/api/resume',     resumeRoutes);
+app.use('/api/aptitude',   aptitudeRoutes);
 
 // ─── Health check ────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ status: 'ok', db: 'supabase' }));

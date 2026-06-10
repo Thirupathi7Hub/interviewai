@@ -198,3 +198,92 @@ Respond ONLY with this JSON:
     return mockEvaluate(question, answer, type, domain, questionIndex);
   }
 }
+
+// ─── Aptitude MCQ Generation ──────────────────────────────────────────────────
+export async function generateAptitudeQuestions(count = 10, difficulty = 'intermediate') {
+  // Fallback mock if no real AI
+  const fallback = () => {
+    const mockPool = [
+      { question: 'If a train travels 60 km in 1 hour, how far will it travel in 2.5 hours?', options: { A: '120 km', B: '150 km', C: '180 km', D: '100 km' }, correct: 'B', explanation: '60 × 2.5 = 150 km.' },
+      { question: 'Find the next number in the series: 2, 4, 8, 16, ?', options: { A: '24', B: '30', C: '32', D: '28' }, correct: 'C', explanation: 'Each term doubles: 16 × 2 = 32.' },
+      { question: 'What is 15% of 200?', options: { A: '20', B: '25', C: '30', D: '35' }, correct: 'C', explanation: '15/100 × 200 = 30.' },
+      { question: 'If A is taller than B, and B is taller than C, who is the shortest?', options: { A: 'A', B: 'B', C: 'C', D: 'Cannot determine' }, correct: 'C', explanation: 'A > B > C, so C is shortest.' },
+      { question: 'A shop offers 20% discount on a ₹500 item. What is the final price?', options: { A: '₹350', B: '₹380', C: '₹400', D: '₹420' }, correct: 'C', explanation: '500 − (20% of 500) = 500 − 100 = ₹400.' },
+      { question: 'Choose the odd one out: Apple, Mango, Banana, Carrot', options: { A: 'Apple', B: 'Mango', C: 'Carrot', D: 'Banana' }, correct: 'C', explanation: 'Carrot is a vegetable; the rest are fruits.' },
+      { question: 'A car covers 120 km in 3 hours. What is its speed?', options: { A: '30 km/h', B: '40 km/h', C: '50 km/h', D: '60 km/h' }, correct: 'B', explanation: 'Speed = 120 / 3 = 40 km/h.' },
+      { question: 'If 5 workers finish a job in 10 days, how many days will 10 workers take?', options: { A: '20 days', B: '10 days', C: '5 days', D: '8 days' }, correct: 'C', explanation: 'More workers = fewer days. 5 × 10 / 10 = 5 days.' },
+      { question: 'What comes next: Monday, Wednesday, Friday, ?', options: { A: 'Saturday', B: 'Sunday', C: 'Tuesday', D: 'Thursday' }, correct: 'B', explanation: 'Every alternate day — Sunday follows Friday in this pattern.' },
+      { question: 'A rectangle has length 8 cm and width 5 cm. What is its area?', options: { A: '26 cm²', B: '40 cm²', C: '13 cm²', D: '80 cm²' }, correct: 'B', explanation: 'Area = 8 × 5 = 40 cm².' },
+      { question: 'What is the square root of 144?', options: { A: '11', B: '12', C: '13', D: '14' }, correct: 'B', explanation: '12 × 12 = 144.' },
+      { question: 'If today is Thursday, what day will it be after 100 days?', options: { A: 'Sunday', B: 'Monday', C: 'Saturday', D: 'Tuesday' }, correct: 'C', explanation: '100 mod 7 = 2. Thursday + 2 = Saturday.' },
+      { question: 'Find the average of 10, 20, 30, 40, 50.', options: { A: '25', B: '30', C: '35', D: '40' }, correct: 'B', explanation: 'Sum = 150, Count = 5, Average = 30.' },
+      { question: 'A pipe fills a tank in 4 hours; another empties it in 8 hours. How long to fill when both are open?', options: { A: '6 hours', B: '8 hours', C: '10 hours', D: '12 hours' }, correct: 'B', explanation: 'Net rate = 1/4 − 1/8 = 1/8. Time = 8 hours.' },
+      { question: 'Which is the largest prime number less than 20?', options: { A: '17', B: '18', C: '19', D: '16' }, correct: 'C', explanation: '19 is prime and is the largest prime less than 20.' },
+      { question: 'If 3x + 6 = 18, what is x?', options: { A: '2', B: '3', C: '4', D: '6' }, correct: 'C', explanation: '3x = 12, x = 4.' },
+      { question: 'ABCDE : FGHIJ :: KLMNO : ?', options: { A: 'PQRST', B: 'QRSTU', C: 'OPQRS', D: 'MNOPQ' }, correct: 'A', explanation: 'Each group is the next 5 consecutive letters.' },
+      { question: 'What percentage is 45 out of 180?', options: { A: '20%', B: '25%', C: '30%', D: '15%' }, correct: 'B', explanation: '45/180 × 100 = 25%.' },
+      { question: 'Find the odd one out: 4, 9, 16, 25, 35', options: { A: '4', B: '25', C: '35', D: '16' }, correct: 'C', explanation: '35 is not a perfect square; the rest are.' },
+      { question: 'If the cost price is ₹200 and selling price is ₹250, what is the profit percentage?', options: { A: '20%', B: '25%', C: '30%', D: '15%' }, correct: 'B', explanation: 'Profit = 50, Profit% = 50/200 × 100 = 25%.' },
+    ];
+    const shuffled = [...mockPool].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, count);
+  };
+
+  if (!hasRealAI()) return fallback();
+
+  const difficultyGuide = {
+    beginner:     'Easy arithmetic, simple patterns, basic vocabulary. Suitable for freshers.',
+    intermediate: 'Moderate word problems, mixed logical reasoning, moderate data interpretation.',
+    expert:       'Complex multi-step problems, advanced number series, abstract reasoning, tricky verbal analogies.',
+  }[difficulty] || 'Moderate questions.';
+
+  const systemMsg = `You are an aptitude test question generator. Generate exactly ${count} multiple-choice aptitude questions.
+Topics to randomly mix: Quantitative Aptitude, Logical Reasoning, Verbal Ability, Data Interpretation.
+Difficulty: ${difficulty.toUpperCase()} — ${difficultyGuide}
+Rules:
+- Each question must have exactly 4 options labeled A, B, C, D.
+- The "correct" field must be ONLY the letter: "A", "B", "C", or "D".
+- "explanation" must be one concise sentence.
+- Vary topics across the set — do not repeat the same topic consecutively.
+- All questions must be clearly worded and unambiguous.
+- Return ONLY a valid JSON array. No markdown, no prose, no code fences.
+
+JSON format:
+[
+  {
+    "question": "<question text>",
+    "options": { "A": "<opt A>", "B": "<opt B>", "C": "<opt C>", "D": "<opt D>" },
+    "correct": "A",
+    "explanation": "<one sentence explanation>"
+  }
+]`;
+
+  const messages = [
+    { role: 'system', content: systemMsg },
+    { role: 'user', content: `Generate ${count} aptitude MCQ questions now. Return only the JSON array.` },
+  ];
+
+  try {
+    const rawText = await callAIForEval(messages, systemMsg);
+    const cleaned = rawText.replace(/```json|```/g, '').trim();
+    const parsed  = JSON.parse(cleaned);
+
+    if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Bad response shape');
+
+    const valid = parsed.filter(q =>
+      q.question && q.options?.A && q.options?.B && q.options?.C && q.options?.D &&
+      ['A','B','C','D'].includes(q.correct)
+    );
+
+    console.log(`✅ AI generated ${valid.length}/${count} aptitude questions [${difficulty}]`);
+    if (valid.length < count) {
+      const extra = fallback().slice(0, count - valid.length);
+      return [...valid, ...extra];
+    }
+    return valid.slice(0, count);
+  } catch (err) {
+    console.error('❌ Aptitude AI generation failed:', err.message);
+    console.log('⚠️ Falling back to mock aptitude questions');
+    return fallback();
+  }
+}
