@@ -77,6 +77,53 @@ function bulletList(items, type) {
 }
 
 function qaCard(q, idx) {
+  const isAptitude = q.options && typeof q.options === 'object' && Object.keys(q.options).length > 0;
+
+  if (isAptitude) {
+    // ── MCQ Aptitude Card ────────────────────────────────────────────────────
+    const correctLetter = q.correctOption || q.correct || '';
+    const userLetter    = q.answer?.match(/^\(([A-D])\)/)?.[1] || '';
+    const isCorrect     = userLetter === correctLetter;
+    const isSkipped     = q.answer === 'Skipped' || !userLetter;
+
+    const optionRows = ['A','B','C','D'].map(letter => {
+      const text    = q.options[letter] || '';
+      if (!text) return '';
+      const isRight = letter === correctLetter;
+      const isPick  = letter === userLetter;
+      const bg    = isRight ? '#dcfce7' : isPick && !isRight ? '#fee2e2' : '#f8fafc';
+      const border = isRight ? '#16a34a' : isPick && !isRight ? '#dc2626' : '#e2e8f0';
+      const label = isRight ? '✓' : isPick && !isRight ? '✗' : '○';
+      const color  = isRight ? '#15803d' : isPick && !isRight ? '#dc2626' : '#64748b';
+      return `
+<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:${bg};border:1px solid ${border};border-radius:8px;margin-bottom:5px;">
+  <span style="font-size:12px;font-weight:900;color:${color};width:16px;flex-shrink:0;">${label}</span>
+  <span style="font-size:12px;font-weight:700;color:${color};width:18px;flex-shrink:0;">${letter}.</span>
+  <span style="font-size:12px;color:#334155;">${text}</span>
+</div>`;
+    }).join('');
+
+    const statusBg    = isSkipped ? '#f1f5f9' : isCorrect ? '#dcfce7' : '#fee2e2';
+    const statusColor = isSkipped ? '#64748b'  : isCorrect ? '#15803d' : '#dc2626';
+    const statusLabel = isSkipped ? 'Skipped'  : isCorrect ? '✓ Correct' : '✗ Incorrect';
+
+    return `
+<div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:18px; margin-bottom:16px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; border-bottom:1px solid #f1f5f9; padding-bottom:8px;">
+    <span style="color:#0d9488; font-size:13px; font-weight:800; text-transform:uppercase;">Question ${idx + 1}</span>
+    <span style="font-size:11px; font-weight:800; background:${statusBg}; color:${statusColor}; padding:3px 10px; border-radius:12px;">${statusLabel}</span>
+  </div>
+  <p style="color:#0f172a; font-size:13.5px; font-weight:700; margin:0 0 12px 0; line-height:1.5;">${q.question}</p>
+  <div style="margin-bottom:12px;">${optionRows}</div>
+  ${q.suggestedAnswer ? `
+  <div style="background:#fef3c7; border-left:3px solid #d97706; padding:10px 12px; border-radius:0 8px 8px 0; margin-top:8px;">
+    <p style="color:#78350f; font-size:11px; font-weight:700; text-transform:uppercase; margin:0 0 3px 0;">Explanation</p>
+    <p style="color:#92400e; font-size:12.5px; margin:0; line-height:1.5; font-weight:500;">${q.suggestedAnswer}</p>
+  </div>` : ''}
+</div>`;
+  }
+
+  // ── Classic Interview Card (free-text answer) ─────────────────────────────
   return `
 <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:18px; margin-bottom:16px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
   <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; border-bottom:1px solid #f1f5f9; padding-bottom:8px;">
@@ -97,6 +144,7 @@ function qaCard(q, idx) {
   </div>` : ''}
 </div>`;
 }
+
 
 // ─── Main Template ────────────────────────────────────────────────────────────
 function buildHTML(fb, userName) {

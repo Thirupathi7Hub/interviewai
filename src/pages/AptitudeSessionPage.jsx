@@ -2,10 +2,13 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  ChevronRight, ChevronLeft, Clock, Target, CheckCircle2,
-  XCircle, AlertCircle, Trophy, BookOpen, Zap, BarChart3
+  ChevronRight, ChevronLeft, Clock, CheckCircle2,
+  XCircle, AlertCircle, Trophy, BookOpen, Zap, BarChart3,
+  Download, Loader2, RotateCcw
 } from 'lucide-react';
 import Navbar from '../components/Navbar.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
+import { exportInterviewPDF } from '../utils/exportPDF.js';
 import client from '../api/client';
 
 const DIFF_LABELS = { beginner: 'Beginner', intermediate: 'Intermediate', expert: 'Expert' };
@@ -36,12 +39,12 @@ function LoadingScreen({ difficulty, count }) {
     <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center gap-8">
       <motion.div
         animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1.5, ease: 'linear' }}
-        className="w-16 h-16 rounded-full border-4 border-purple-500/20 border-t-purple-500"
+        className="w-16 h-16 rounded-full border-4 border-teal-500/20 border-t-teal-500"
       />
       <div className="text-center">
         <p className="text-white font-black text-2xl mb-2">Generating Questions…</p>
         <p className="text-gray-400 text-sm">
-          AI is preparing <span className="text-white font-bold">{count}</span> {' '}
+          AI is preparing <span className="text-white font-bold">{count}</span>{' '}
           <span className={`font-bold ${dc.text}`}>{DIFF_LABELS[difficulty]}</span> aptitude questions for you
         </p>
       </div>
@@ -49,7 +52,7 @@ function LoadingScreen({ difficulty, count }) {
         {[0,1,2].map(i => (
           <motion.div key={i} animate={{ scale: [1, 1.4, 1] }}
             transition={{ repeat: Infinity, duration: 0.8, delay: i * 0.2 }}
-            className="w-2.5 h-2.5 rounded-full bg-purple-500" />
+            className="w-2.5 h-2.5 rounded-full bg-teal-500" />
         ))}
       </div>
     </div>
@@ -57,8 +60,10 @@ function LoadingScreen({ difficulty, count }) {
 }
 
 // ─── Result Page ───────────────────────────────────────────────────────────────
-function ResultsPage({ questions, answers, difficulty, timeTaken }) {
-  const navigate = useNavigate();
+function ResultsPage({ questions, answers, difficulty, timeTaken, savedResult, userName }) {
+  const navigate    = useNavigate();
+  const [pdfLoading, setPdfLoading] = useState(false);
+
   const correct = answers.filter((a, i) => a === questions[i].correct).length;
   const total   = questions.length;
   const score   = Math.round((correct / total) * 100);
@@ -73,6 +78,37 @@ function ResultsPage({ questions, answers, difficulty, timeTaken }) {
   const mm = String(Math.floor(timeTaken / 60)).padStart(2, '0');
   const ss = String(timeTaken % 60).padStart(2, '0');
 
+  const handleDownloadPDF = async () => {
+    setPdfLoading(true);
+    try {
+      // Build a feedback object matching the shape exportInterviewPDF expects
+      const feedbackData = {
+        type:           'Aptitude',
+        domain:         `Aptitude Quiz · ${DIFF_LABELS[difficulty]}`,
+        finalScore:     score,
+        scoreBreakdown: { content: score, communication: score, confidence: score },
+        strengths:      savedResult?.strengths  || [`${correct} / ${total} correct`],
+        improvements:   savedResult?.improvements || [],
+        completedAt:    savedResult?.completedAt || new Date().toISOString(),
+        // Build QA with MCQ-compatible shape for exportPDF
+        qa: questions.map((q, i) => ({
+          question:       q.question,
+          answer:         answers[i] ? `(${answers[i]}) ${q.options[answers[i]]}` : 'Skipped',
+          score:          answers[i] === q.correct ? 100 : 0,
+          isCorrect:      answers[i] === q.correct,
+          correctOption:  q.correct,
+          correctText:    q.options[q.correct],
+          options:        q.options,
+          suggestedAnswer: q.explanation || '',
+        })),
+      };
+
+      await exportInterviewPDF(feedbackData, userName || 'Candidate');
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-h-screen bg-[#0a0a0a]">
       <Navbar />
@@ -81,7 +117,7 @@ function ResultsPage({ questions, answers, difficulty, timeTaken }) {
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
           className="text-center mb-10">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-semibold uppercase tracking-widest mb-4">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-teal-500/10 border border-teal-500/20 text-teal-400 text-xs font-semibold uppercase tracking-widest mb-4">
             🧠 Aptitude Master · Results
           </div>
           <h1 className={`text-4xl font-black mb-2 ${grade.color}`}>{grade.label}</h1>
@@ -89,6 +125,9 @@ function ResultsPage({ questions, answers, difficulty, timeTaken }) {
             <span className={`font-semibold ${dc.text}`}>{DIFF_LABELS[difficulty]}</span>
             {' '}· {total} Questions · Time: {mm}:{ss}
           </p>
+          {savedResult && (
+            <p className="text-gray-600 text-xs mt-1">✓ Saved to your history</p>
+          )}
         </motion.div>
 
         {/* Score Card */}
@@ -126,10 +165,10 @@ function ResultsPage({ questions, answers, difficulty, timeTaken }) {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }} className="space-y-4 mb-8">
           <h2 className="text-white font-bold text-lg flex items-center gap-2">
-            <BookOpen size={18} className="text-purple-400" /> Answer Review
+            <BookOpen size={18} className="text-teal-400" /> Answer Review
           </h2>
           {questions.map((q, i) => {
-            const selected = answers[i];
+            const selected  = answers[i];
             const isCorrect = selected === q.correct;
             const skipped   = selected === null;
             return (
@@ -153,15 +192,15 @@ function ResultsPage({ questions, answers, difficulty, timeTaken }) {
 
                 <div className="grid grid-cols-2 gap-2 mb-3 ml-7">
                   {OPT_LETTERS.map(letter => {
-                    const isRight = letter === q.correct;
+                    const isRight  = letter === q.correct;
                     const isPicked = letter === selected;
                     return (
-                      <div key={letter} className={`text-xs px-3 py-2 rounded-xl font-medium transition-all ${
+                      <div key={letter} className={`text-xs px-3 py-2 rounded-xl font-medium transition-all flex items-center gap-1.5 ${
                         isRight  ? 'bg-green-500/15 text-green-400 border border-green-500/30'
                         : isPicked && !isRight ? 'bg-red-500/15 text-red-400 border border-red-500/30'
                         : 'bg-white/3 text-gray-500 border border-white/5'
                       }`}>
-                        <span className="font-bold mr-2">{letter}.</span>{q.options[letter]}
+                        <span className="font-bold">{letter}.</span>{q.options[letter]}
                       </div>
                     );
                   })}
@@ -179,17 +218,25 @@ function ResultsPage({ questions, answers, difficulty, timeTaken }) {
         </motion.div>
 
         {/* Actions */}
-        <div className="flex gap-4 justify-center">
+        <div className="flex flex-wrap gap-4 justify-center">
           <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
             onClick={() => navigate('/dashboard')}
             className="px-6 py-3 rounded-2xl text-sm font-bold border border-white/10 text-gray-300 hover:text-white hover:bg-white/5 transition-all">
             Back to Dashboard
           </motion.button>
+
           <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-            onClick={() => navigate('/aptitude')}
+            onClick={handleDownloadPDF} disabled={pdfLoading}
+            className="px-6 py-3 rounded-2xl text-sm font-bold flex items-center gap-2 border border-teal-500/30 text-teal-400 hover:bg-teal-500/10 transition-all disabled:opacity-50">
+            {pdfLoading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+            {pdfLoading ? 'Generating PDF…' : 'Download PDF Report'}
+          </motion.button>
+
+          <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+            onClick={() => navigate('/aptitude/select')}
             className="px-6 py-3 rounded-2xl text-sm font-bold flex items-center gap-2"
-            style={{ background: 'linear-gradient(135deg, #7c3aed, #9333ea)', color: 'white' }}>
-            <Trophy size={15} /> Try Again
+            style={{ background: 'linear-gradient(135deg, #0d9488, #0891b2)', color: 'white' }}>
+            <RotateCcw size={15} /> Try Again
           </motion.button>
         </div>
       </main>
@@ -202,19 +249,22 @@ export default function AptitudeSessionPage() {
   const navigate  = useNavigate();
   const location  = useLocation();
   const timer     = useTimer();
+  const { user }  = useAuth();
 
-  // Params passed via router state from DashboardPage
+  // Params passed via router state from AptitudeSelectPage
   const { difficulty = 'intermediate', count = 10 } = location.state || {};
 
-  const [questions,  setQuestions]  = useState([]);
-  const [answers,    setAnswers]    = useState([]); // null = skipped
-  const [current,    setCurrent]    = useState(0);
-  const [selected,   setSelected]   = useState(null); // current question pick
-  const [loading,    setLoading]    = useState(true);
-  const [error,      setError]      = useState('');
-  const [finished,   setFinished]   = useState(false);
-  const [finalTime,  setFinalTime]  = useState(0);
-  const [revealed,   setRevealed]   = useState(false); // show answer after pick
+  const [questions,    setQuestions]    = useState([]);
+  const [answers,      setAnswers]      = useState([]); // null = skipped
+  const [current,      setCurrent]      = useState(0);
+  const [selected,     setSelected]     = useState(null);
+  const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState('');
+  const [finished,     setFinished]     = useState(false);
+  const [finalTime,    setFinalTime]    = useState(0);
+  const [revealed,     setRevealed]     = useState(false);
+  const [savedResult,  setSavedResult]  = useState(null);
+  const [saving,       setSaving]       = useState(false);
 
   // Fetch questions
   useEffect(() => {
@@ -231,8 +281,38 @@ export default function AptitudeSessionPage() {
     })();
   }, [count, difficulty]);
 
+  // Save results when finished
+  const saveResults = useCallback(async (qs, ans, score, time) => {
+    setSaving(true);
+    try {
+      const res = await client.post('/aptitude/save', {
+        difficulty,
+        count,
+        questions: qs,
+        answers:   ans,
+        finalScore: score,
+        timeTaken:  time,
+      });
+      setSavedResult(res.data);
+      console.log('✅ Aptitude result saved:', res.data.interviewId);
+    } catch (err) {
+      console.error('⚠️ Failed to save aptitude result:', err.message);
+      // Non-blocking — don't show an error to user
+    } finally {
+      setSaving(false);
+    }
+  }, [difficulty, count]);
+
+  const finishQuiz = useCallback((qs, ans, time) => {
+    const correct = ans.filter((a, i) => a === qs[i].correct).length;
+    const score   = Math.round((correct / qs.length) * 100);
+    setFinalTime(time);
+    setFinished(true);
+    saveResults(qs, ans, score, time);
+  }, [saveResults]);
+
   const handleSelect = useCallback((letter) => {
-    if (revealed) return; // already answered
+    if (revealed) return;
     setSelected(letter);
     setRevealed(true);
     setAnswers(prev => {
@@ -245,13 +325,12 @@ export default function AptitudeSessionPage() {
   const handleNext = useCallback(() => {
     if (current < questions.length - 1) {
       setCurrent(c => c + 1);
-      setSelected(answers[current + 1]); // restore if revisiting
+      setSelected(answers[current + 1]);
       setRevealed(answers[current + 1] !== null);
     } else {
-      setFinalTime(timer.totalSeconds);
-      setFinished(true);
+      finishQuiz(questions, answers, timer.totalSeconds);
     }
-  }, [current, questions.length, answers, timer.totalSeconds]);
+  }, [current, questions, answers, timer.totalSeconds, finishQuiz]);
 
   const handlePrev = useCallback(() => {
     if (current > 0) {
@@ -263,8 +342,14 @@ export default function AptitudeSessionPage() {
 
   const handleSkip = useCallback(() => {
     setAnswers(prev => { const c = [...prev]; c[current] = null; return c; });
-    handleNext();
-  }, [current, handleNext]);
+    if (current < questions.length - 1) {
+      setCurrent(c => c + 1);
+      setSelected(answers[current + 1]);
+      setRevealed(answers[current + 1] !== null);
+    } else {
+      finishQuiz(questions, answers, timer.totalSeconds);
+    }
+  }, [current, questions, answers, timer.totalSeconds, finishQuiz]);
 
   if (loading) return <LoadingScreen difficulty={difficulty} count={count} />;
 
@@ -272,15 +357,21 @@ export default function AptitudeSessionPage() {
     <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
       <div className="text-center">
         <p className="text-red-400 mb-4 text-lg font-semibold">{error}</p>
-        <button onClick={() => navigate('/dashboard')}
-          className="btn-gold px-6 py-3 rounded-xl text-sm font-bold">Back to Dashboard</button>
+        <button onClick={() => navigate('/aptitude/select')}
+          className="btn-gold px-6 py-3 rounded-xl text-sm font-bold">Back to Selection</button>
       </div>
     </div>
   );
 
   if (finished) return (
-    <ResultsPage questions={questions} answers={answers}
-      difficulty={difficulty} timeTaken={finalTime} />
+    <ResultsPage
+      questions={questions}
+      answers={answers}
+      difficulty={difficulty}
+      timeTaken={finalTime}
+      savedResult={savedResult}
+      userName={user?.name}
+    />
   );
 
   if (!questions.length) return null;
@@ -288,7 +379,7 @@ export default function AptitudeSessionPage() {
   const q       = questions[current];
   const dc      = DIFF_COLORS[difficulty] || DIFF_COLORS.intermediate;
   const answered = answers.filter(a => a !== null).length;
-  const progress = ((current) / questions.length) * 100;
+  const progress = (current / questions.length) * 100;
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-h-screen bg-[#0a0a0a]">
@@ -324,7 +415,7 @@ export default function AptitudeSessionPage() {
           <motion.div
             animate={{ width: `${progress}%` }}
             transition={{ duration: 0.3 }}
-            className="h-full rounded-full bg-gradient-to-r from-purple-500 to-violet-500"
+            className="h-full rounded-full bg-gradient-to-r from-teal-500 to-cyan-500"
           />
         </div>
 
@@ -337,9 +428,9 @@ export default function AptitudeSessionPage() {
               setRevealed(answers[i] !== null);
             }}
               className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
-                i === current  ? 'bg-purple-500 text-white scale-110'
+                i === current  ? 'bg-teal-500 text-white scale-110'
                 : answers[i]  ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                : 'bg-white/5 text-gray-500 border border-white/5 hover:border-purple-500/30'
+                : 'bg-white/5 text-gray-500 border border-white/5 hover:border-teal-500/30'
               }`}>
               {i + 1}
             </button>
@@ -353,10 +444,9 @@ export default function AptitudeSessionPage() {
             exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}
             className="glass rounded-3xl border border-white/8 p-8 mb-6">
 
-            {/* Q Counter + Question */}
             <div className="mb-6">
               <div className="flex items-center gap-2 mb-3">
-                <span className="text-xs font-bold text-purple-400 uppercase tracking-widest">
+                <span className="text-xs font-bold text-teal-400 uppercase tracking-widest">
                   Question {current + 1} of {questions.length}
                 </span>
               </div>
@@ -369,11 +459,11 @@ export default function AptitudeSessionPage() {
                 const isCorrect = letter === q.correct;
                 const isPicked  = letter === selected;
 
-                let cls = 'bg-white/3 border-white/8 text-gray-200 hover:border-purple-500/40 hover:bg-purple-500/5 cursor-pointer';
+                let cls = 'bg-white/3 border-white/8 text-gray-200 hover:border-teal-500/40 hover:bg-teal-500/5 cursor-pointer';
                 if (revealed) {
-                  if (isCorrect)              cls = 'bg-green-500/15 border-green-500/40 text-green-300 cursor-default';
-                  else if (isPicked)          cls = 'bg-red-500/15 border-red-500/40 text-red-300 cursor-default';
-                  else                        cls = 'bg-white/2 border-white/5 text-gray-500 cursor-default';
+                  if (isCorrect)     cls = 'bg-green-500/15 border-green-500/40 text-green-300 cursor-default';
+                  else if (isPicked) cls = 'bg-red-500/15 border-red-500/40 text-red-300 cursor-default';
+                  else               cls = 'bg-white/2 border-white/5 text-gray-500 cursor-default';
                 }
 
                 return (
@@ -384,11 +474,11 @@ export default function AptitudeSessionPage() {
                     className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl border transition-all duration-200 text-left ${cls}`}
                   >
                     <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black flex-shrink-0 ${
-                      revealed && isCorrect ? 'bg-green-500 text-white'
+                      revealed && isCorrect  ? 'bg-green-500 text-white'
                       : revealed && isPicked ? 'bg-red-500 text-white'
                       : 'bg-white/5 text-gray-400'
                     }`}>
-                      {revealed && isCorrect ? <CheckCircle2 size={14} />
+                      {revealed && isCorrect  ? <CheckCircle2 size={14} />
                        : revealed && isPicked && !isCorrect ? <XCircle size={14} />
                        : letter}
                     </div>
@@ -398,7 +488,7 @@ export default function AptitudeSessionPage() {
               })}
             </div>
 
-            {/* Explanation (shown after answering) */}
+            {/* Explanation */}
             <AnimatePresence>
               {revealed && q.explanation && (
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
@@ -432,7 +522,7 @@ export default function AptitudeSessionPage() {
             <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
               onClick={handleNext}
               className="flex items-center gap-2 px-6 py-3 rounded-2xl text-sm font-bold transition-all"
-              style={{ background: 'linear-gradient(135deg, #7c3aed, #9333ea)', color: 'white' }}>
+              style={{ background: 'linear-gradient(135deg, #0d9488, #0891b2)', color: 'white' }}>
               {current === questions.length - 1 ? (
                 <><Trophy size={15} /> Finish &amp; See Results</>
               ) : (
@@ -442,14 +532,23 @@ export default function AptitudeSessionPage() {
           </div>
         </div>
 
-        {/* Finish Early */}
+        {/* Early Submit */}
         {current < questions.length - 1 && answered >= Math.ceil(questions.length * 0.5) && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}
             className="text-center mt-6">
-            <button onClick={() => { setFinalTime(timer.totalSeconds); setFinished(true); }}
+            <button
+              onClick={() => finishQuiz(questions, answers, timer.totalSeconds)}
               className="text-gray-500 text-xs hover:text-gray-300 transition-colors underline underline-offset-2">
               Submit early ({answered}/{questions.length} answered)
             </button>
+          </motion.div>
+        )}
+
+        {/* Saving indicator */}
+        {saving && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            className="text-center mt-3 flex items-center justify-center gap-2 text-xs text-teal-400">
+            <Loader2 size={12} className="animate-spin" /> Saving your results…
           </motion.div>
         )}
 
