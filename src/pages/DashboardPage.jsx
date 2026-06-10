@@ -115,13 +115,8 @@ export default function DashboardPage() {
 
           {/* Card 2 — Resume-Based */}
           <div
-            className={`relative overflow-hidden rounded-3xl border p-7 transition-all duration-300 ${
-              showResumePanel ? 'border-purple-500/40' : 'border-purple-500/20'
-            }`}
-            style={{ background: showResumePanel
-              ? 'linear-gradient(135deg, rgba(124,58,237,0.12) 0%, rgba(147,51,234,0.06) 100%)'
-              : 'linear-gradient(135deg, rgba(124,58,237,0.07) 0%, rgba(147,51,234,0.03) 100%)'
-            }}
+            className="relative overflow-hidden rounded-3xl border border-purple-500/20 p-7"
+            style={{ background: 'linear-gradient(135deg, rgba(124,58,237,0.07) 0%, rgba(147,51,234,0.03) 100%)' }}
           >
             <div className="absolute right-0 top-0 w-48 h-48 opacity-10 pointer-events-none"
               style={{ background: 'radial-gradient(circle at 80% 20%, #7c3aed, transparent)' }} />
