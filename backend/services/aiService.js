@@ -200,9 +200,77 @@ Respond ONLY with this JSON:
 }
 
 // ─── Aptitude MCQ Generation ──────────────────────────────────────────────────
+// Helper function to generate a single batch of questions
+async function generateAptitudeQuestionsBatch(count, difficulty = 'intermediate', topicsFocus = '') {
+  if (!hasRealAI()) return [];
+
+  const difficultyGuide = {
+    beginner:     'Easy arithmetic, simple patterns, basic vocabulary. Suitable for freshers.',
+    intermediate: 'Moderate word problems, mixed logical reasoning, moderate data interpretation.',
+    expert:       'Complex multi-step problems, advanced number series, abstract reasoning, tricky verbal analogies.',
+  }[difficulty] || 'Moderate questions.';
+
+  const systemMsg = `You are an aptitude test question generator. Generate exactly ${count} multiple-choice aptitude questions.
+Topics to randomly mix: Quantitative Aptitude, Logical Reasoning, Verbal Ability, Data Interpretation.
+${topicsFocus ? `Specific focus for this batch: ${topicsFocus}` : ''}
+Difficulty: ${difficulty.toUpperCase()} — ${difficultyGuide}
+Rules:
+- Each question must have exactly 4 options labeled A, B, C, D.
+- The "correct" field must be ONLY the letter: "A", "B", "C", or "D".
+- "explanation" must be one concise sentence.
+- Vary topics across the set — do not repeat the same topic consecutively.
+- All questions must be clearly worded and unambiguous.
+- Return ONLY a valid JSON array. No markdown, no prose, no code fences.
+
+JSON format:
+[
+  {
+    "question": "<question text>",
+    "options": { "A": "<opt A>", "B": "<opt B>", "C": "<opt C>", "D": "<opt D>" },
+    "correct": "A",
+    "explanation": "<one sentence explanation>"
+  }
+]`;
+
+  const messages = [
+    { role: 'system', content: systemMsg },
+    { role: 'user', content: `Generate ${count} aptitude MCQ questions now. Return only the JSON array.` },
+  ];
+
+  try {
+    const maxTokensForAptitude = count > 10 ? 3000 : count > 5 ? 2000 : 1000;
+    const rawText = await callAIForEval(messages, systemMsg, maxTokensForAptitude);
+    
+    // Robust extraction of JSON array from text
+    let cleaned = rawText;
+    const firstBracket = rawText.indexOf('[');
+    const lastBracket = rawText.lastIndexOf(']');
+    if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+      cleaned = rawText.substring(firstBracket, lastBracket + 1);
+    } else {
+      cleaned = rawText.replace(/```json|```/g, '').trim();
+    }
+    
+    const parsed  = JSON.parse(cleaned);
+
+    if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Bad response shape');
+
+    const valid = parsed.filter(q =>
+      q.question && q.options?.A && q.options?.B && q.options?.C && q.options?.D &&
+      ['A','B','C','D'].includes(q.correct)
+    );
+
+    console.log(`✅ AI generated ${valid.length}/${count} aptitude questions [${difficulty}]`);
+    return valid;
+  } catch (err) {
+    console.error(`❌ Batch generation of ${count} questions failed:`, err.message);
+    return [];
+  }
+}
+
 export async function generateAptitudeQuestions(count = 10, difficulty = 'intermediate') {
   // Fallback mock if no real AI
-  const fallback = (diff = 'intermediate') => {
+  const fallback = (diff = 'intermediate', targetCount = count) => {
     const beginnerPool = [
       { question: 'What is 15% of 200?', options: { A: '20', B: '25', C: '30', D: '35' }, correct: 'C', explanation: '15/100 × 200 = 30.' },
       { question: 'Find the next number in the series: 2, 4, 8, 16, ?', options: { A: '24', B: '30', C: '32', D: '28' }, correct: 'C', explanation: 'Each term doubles: 16 × 2 = 32.' },
@@ -277,75 +345,50 @@ export async function generateAptitudeQuestions(count = 10, difficulty = 'interm
     else if (diff === 'expert') pool = expertPool;
 
     const shuffled = [...pool].sort(() => Math.random() - 0.5);
-    return shuffled.slice(0, count);
+    return shuffled.slice(0, targetCount);
   };
 
-  if (!hasRealAI()) return fallback(difficulty);
+  if (!hasRealAI()) return fallback(difficulty, count);
 
-  const difficultyGuide = {
-    beginner:     'Easy arithmetic, simple patterns, basic vocabulary. Suitable for freshers.',
-    intermediate: 'Moderate word problems, mixed logical reasoning, moderate data interpretation.',
-    expert:       'Complex multi-step problems, advanced number series, abstract reasoning, tricky verbal analogies.',
-  }[difficulty] || 'Moderate questions.';
+  let questions = [];
 
-  const systemMsg = `You are an aptitude test question generator. Generate exactly ${count} multiple-choice aptitude questions.
-Topics to randomly mix: Quantitative Aptitude, Logical Reasoning, Verbal Ability, Data Interpretation.
-Difficulty: ${difficulty.toUpperCase()} — ${difficultyGuide}
-Rules:
-- Each question must have exactly 4 options labeled A, B, C, D.
-- The "correct" field must be ONLY the letter: "A", "B", "C", or "D".
-- "explanation" must be one concise sentence.
-- Vary topics across the set — do not repeat the same topic consecutively.
-- All questions must be clearly worded and unambiguous.
-- Return ONLY a valid JSON array. No markdown, no prose, no code fences.
-
-JSON format:
-[
-  {
-    "question": "<question text>",
-    "options": { "A": "<opt A>", "B": "<opt B>", "C": "<opt C>", "D": "<opt D>" },
-    "correct": "A",
-    "explanation": "<one sentence explanation>"
-  }
-]`;
-
-  const messages = [
-    { role: 'system', content: systemMsg },
-    { role: 'user', content: `Generate ${count} aptitude MCQ questions now. Return only the JSON array.` },
-  ];
-
-  try {
-    const maxTokensForAptitude = count > 10 ? 3000 : count > 5 ? 2000 : 1000;
-    const rawText = await callAIForEval(messages, systemMsg, maxTokensForAptitude);
+  if (count <= 5) {
+    questions = await generateAptitudeQuestionsBatch(count, difficulty, '');
+  } else {
+    // Split into 2 parallel batches to speed up generation by ~50%
+    const half1 = Math.ceil(count / 2);
+    const half2 = Math.floor(count / 2);
     
-    // Robust extraction of JSON array from text
-    let cleaned = rawText;
-    const firstBracket = rawText.indexOf('[');
-    const lastBracket = rawText.lastIndexOf(']');
-    if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
-      cleaned = rawText.substring(firstBracket, lastBracket + 1);
-    } else {
-      cleaned = rawText.replace(/```json|```/g, '').trim();
+    const [batch1, batch2] = await Promise.all([
+      generateAptitudeQuestionsBatch(half1, difficulty, 'Focus primarily on Quantitative Aptitude and Logical Reasoning.'),
+      generateAptitudeQuestionsBatch(half2, difficulty, 'Focus primarily on Verbal Ability and Data Interpretation.')
+    ]);
+
+    questions = [...batch1, ...batch2];
+  }
+
+  // If we couldn't get enough questions from the AI, fill the rest with mock questions
+  if (questions.length < count) {
+    console.log(`⚠️ Got only ${questions.length}/${count} questions from AI, filling remainder with mock questions.`);
+    const needed = count - questions.length;
+    
+    // To avoid duplication with existing questions in the mock pool
+    const mockExtra = fallback(difficulty, count);
+    let extraAdded = 0;
+    for (const mq of mockExtra) {
+      if (extraAdded >= needed) break;
+      // Simple check to prevent adding exact same question if generated by AI
+      if (!questions.some(q => q.question.toLowerCase() === mq.question.toLowerCase())) {
+        questions.push(mq);
+        extraAdded++;
+      }
     }
     
-    const parsed  = JSON.parse(cleaned);
-
-    if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Bad response shape');
-
-    const valid = parsed.filter(q =>
-      q.question && q.options?.A && q.options?.B && q.options?.C && q.options?.D &&
-      ['A','B','C','D'].includes(q.correct)
-    );
-
-    console.log(`✅ AI generated ${valid.length}/${count} aptitude questions [${difficulty}]`);
-    if (valid.length < count) {
-      const extra = fallback(difficulty).slice(0, count - valid.length);
-      return [...valid, ...extra];
+    // If still short (e.g. mock had duplicates), just slice from mockExtra
+    if (questions.length < count) {
+      questions = [...questions, ...mockExtra.slice(0, count - questions.length)];
     }
-    return valid.slice(0, count);
-  } catch (err) {
-    console.error('❌ Aptitude AI generation failed:', err.message);
-    console.log('⚠️ Falling back to mock aptitude questions');
-    return fallback(difficulty);
   }
+
+  return questions.slice(0, count);
 }
