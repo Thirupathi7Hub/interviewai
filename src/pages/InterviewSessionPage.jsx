@@ -54,7 +54,7 @@ export default function InterviewSessionPage() {
 
   // ── Real-time proctoring (heuristic — face position, tab switch) ─────────
   const proctoringEnabled = !!aiCharacter && cameraOn;
-  const { confidenceScore, alert: proctoringAlert, violationCount, shouldEnd } = useProctoring({
+  const { confidenceScore, alert: proctoringAlert, violationCount, shouldEnd, isModelsLoading } = useProctoring({
     videoRef,
     enabled: proctoringEnabled,
   });
@@ -403,6 +403,7 @@ export default function InterviewSessionPage() {
         eyeContact={eyeContact}
         insight={insight}
         isAnalyzing={isAnalyzing}
+        isModelsLoading={isModelsLoading}
       />
 
       {/* ── Quick Feedback Overlay ─────────────────────────────────────── */}

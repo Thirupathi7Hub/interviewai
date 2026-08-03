@@ -25,6 +25,7 @@ export default function ProctoringOverlay({
   eyeContact   = true,
   insight      = '',
   isAnalyzing  = false,
+  isModelsLoading = false,
 }) {
   // Prefer AI score when available, fall back to heuristic score
   const displayScore = aiScore !== null ? aiScore : confidenceScore;
@@ -96,6 +97,17 @@ export default function ProctoringOverlay({
             </div>
           </div>
         </div>
+
+        {/* Loading models state */}
+        {isModelsLoading && (
+          <div className="border-t border-white/5 pt-2 flex items-center gap-2">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-yellow-500" />
+            </span>
+            <p className="text-[8px] text-yellow-500 font-bold uppercase tracking-widest animate-pulse">Initializing AI</p>
+          </div>
+        )}
 
         {/* Emotion + engagement row (AI only) */}
         {hasAI && emotion && (
