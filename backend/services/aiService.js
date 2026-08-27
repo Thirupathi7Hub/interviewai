@@ -110,7 +110,14 @@ async function callAIForQuestion(messages, plainPrompt) {
 
 // ─── AI caller for EVALUATION (needs more tokens for JSON output) ─────────────
 async function callAIForEval(messages, plainPrompt, maxTokens = 500) {
-  if (NVIDIA_KEY_2) return callNvidia(messages, NVIDIA_KEY_2, NVIDIA_MODEL_EVAL, 2, maxTokens);
+  if (NVIDIA_KEY_2) {
+    try {
+      return await callNvidia(messages, NVIDIA_KEY_2, NVIDIA_MODEL_EVAL, 2, maxTokens);
+    } catch (err) {
+      console.warn('⚠️ NVIDIA_KEY_2 evaluation failed (possibly due to namespace or EOL permissions). Falling back to NVIDIA_KEY:', err.message);
+      // Fall through to NVIDIA_KEY
+    }
+  }
   if (NVIDIA_KEY)   return callNvidia(messages, NVIDIA_KEY,   NVIDIA_MODEL_EVAL, 2, maxTokens);
   if (OPENAI_KEY)   return callOpenAI(messages, maxTokens);
   if (GEMINI_KEY)   return callGemini(plainPrompt || messages.map(m => m.content).join('\n'), maxTokens);
