@@ -12,13 +12,16 @@ const rawModelEval = process.env.NVIDIA_MODEL_EVAL || process.env.NVIDIA_MODEL |
 
 function normalizeModel(modelName) {
   if (!modelName) return modelName;
-  // Automatically map retired or unauthorized models to the confirmed working vision model
+  const nameLower = modelName.toLowerCase();
+  // Automatically map retired, restricted, or custom Llama/Nemotron/Minitron models to the working Vision model
   if (
-    modelName.includes('llama-3.1-8b-instruct') || 
-    modelName.includes('nemotron-51b-instruct') ||
-    modelName.includes('llama-3.1-70b-instruct') ||
-    modelName.includes('nemotron-70b-instruct')
+    nameLower.includes('llama') || 
+    nameLower.includes('nemotron') || 
+    nameLower.includes('minitron')
   ) {
+    if (nameLower.includes('llama-3.2-11b-vision-instruct')) {
+      return modelName;
+    }
     return 'meta/llama-3.2-11b-vision-instruct';
   }
   return modelName;
