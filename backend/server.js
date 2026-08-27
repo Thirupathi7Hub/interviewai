@@ -86,6 +86,79 @@ app.use('/api/aptitude',   aptitudeRoutes);
 // ─── Health check ────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ status: 'ok', db: 'supabase' }));
 
+// ─── Diagnostic Route ────────────────────────────────────────────────────────
+app.get('/api/test-ai', async (req, res) => {
+  try {
+    const { default: axios } = await import('axios');
+    const key = process.env.NVIDIA_API_KEY;
+    const model = process.env.NVIDIA_MODEL || 'nvidia/llama-3.1-nemotron-51b-instruct';
+    
+    const results = {};
+    
+    // Test 1: Chat Completion with configured model
+    try {
+      const response = await axios.post(
+        'https://integrate.api.nvidia.com/v1/chat/completions',
+        {
+          model: model,
+          messages: [{ role: 'user', content: 'Say hello in one word.' }],
+          temperature: 0.7,
+          max_tokens: 50,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${key}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      results.test1 = { status: 'success', data: response.data.choices[0].message };
+    } catch (err) {
+      results.test1 = { 
+        status: 'failed', 
+        code: err.response?.status, 
+        data: err.response?.data, 
+        message: err.message 
+      };
+    }
+    
+    // Test 2: List models
+    try {
+      const response = await axios.get(
+        'https://integrate.api.nvidia.com/v1/models',
+        {
+          headers: {
+            Authorization: `Bearer ${key}`,
+          },
+        }
+      );
+      results.test2 = { 
+        status: 'success', 
+        models: response.data.data.map(m => m.id)
+      };
+    } catch (err) {
+      results.test2 = { 
+        status: 'failed', 
+        code: err.response?.status, 
+        data: err.response?.data, 
+        message: err.message 
+      };
+    }
+    
+    res.json({
+      env: {
+        NVIDIA_MODEL: process.env.NVIDIA_MODEL,
+        NVIDIA_MODEL_EVAL: process.env.NVIDIA_MODEL_EVAL,
+        hasKey: !!key,
+        keyPrefix: key ? key.substring(0, 10) : null
+      },
+      results
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Start ───────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
