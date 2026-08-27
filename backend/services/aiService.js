@@ -7,25 +7,51 @@ const NVIDIA_KEY_2 = process.env.NVIDIA_API_KEY_2?.startsWith('nvapi-') ? proces
 const OPENAI_KEY = process.env.OPENAI_API_KEY?.startsWith('sk-') ? process.env.OPENAI_API_KEY : null;
 const GEMINI_KEY = process.env.GEMINI_API_KEY?.startsWith('AI') ? process.env.GEMINI_API_KEY : null;
 const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-const NVIDIA_MODEL = process.env.NVIDIA_MODEL || 'meta/llama-3.1-8b-instruct';
+const rawModel = process.env.NVIDIA_MODEL || 'nvidia/llama-3.1-nemotron-51b-instruct';
+const rawModelEval = process.env.NVIDIA_MODEL_EVAL || process.env.NVIDIA_MODEL || 'nvidia/llama-3.1-nemotron-70b-instruct';
+
+function normalizeModel(modelName) {
+  if (!modelName) return modelName;
+  // Automatically map retired / deprecated models to active equivalents
+  if (modelName.includes('llama-3.1-8b-instruct')) {
+    return 'nvidia/llama-3.1-nemotron-51b-instruct';
+  }
+  if (modelName.includes('llama-3.1-70b-instruct')) {
+    return 'nvidia/llama-3.1-nemotron-70b-instruct';
+  }
+  return modelName;
+}
+
+const NVIDIA_MODEL = normalizeModel(rawModel);
+const NVIDIA_MODEL_EVAL = normalizeModel(rawModelEval);
 
 const hasRealAI = () => !USE_MOCK && !!(NVIDIA_KEY || OPENAI_KEY || GEMINI_KEY);
 
-if (NVIDIA_KEY) console.log(`🤖 Q-Engine  : NVIDIA NIM (${NVIDIA_MODEL}) [key-1]`);
-if (NVIDIA_KEY_2) console.log(`🤖 Eval-Engine: NVIDIA NIM (${NVIDIA_MODEL}) [key-2]`);
-else if (OPENAI_KEY) console.log(`🤖 AI Engine: OpenAI (${MODEL})`);
-else if (GEMINI_KEY) console.log('🤖 AI Engine: Google Gemini');
-else console.log('🤖 AI Engine: Mock (no valid API key found)');
+if (NVIDIA_KEY) {
+  console.log(`🤖 Q-Engine  : NVIDIA NIM (${NVIDIA_MODEL}) [key-1]`);
+  if (NVIDIA_KEY_2) {
+    console.log(`🤖 Eval-Engine: NVIDIA NIM (${NVIDIA_MODEL_EVAL}) [key-2]`);
+  } else {
+    console.log(`🤖 Eval-Engine: NVIDIA NIM (${NVIDIA_MODEL_EVAL}) [key-1]`);
+  }
+} else if (OPENAI_KEY) {
+  console.log(`🤖 AI Engine: OpenAI (${MODEL})`);
+} else if (GEMINI_KEY) {
+  console.log('🤖 AI Engine: Google Gemini');
+} else {
+  console.log('🤖 AI Engine: Mock (no valid API key found)');
+}
 
-// ─── NVIDIA NIM caller (with retry, accepts explicit key) ──────────────────
-async function callNvidia(messages, apiKey, retries = 2, maxTokens = 150) {
+// ─── NVIDIA NIM caller (with retry, accepts explicit key and model) ──────────
+async function callNvidia(messages, apiKey, model, retries = 2, maxTokens = 150) {
   const key = apiKey || NVIDIA_KEY;
+  const selectedModel = model || NVIDIA_MODEL;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const res = await axios.post(
         'https://integrate.api.nvidia.com/v1/chat/completions',
         {
-          model: NVIDIA_MODEL,
+          model: selectedModel,
           messages,
           temperature: 0.7,
           max_tokens: maxTokens,
@@ -74,7 +100,7 @@ async function callGemini(prompt, maxTokens = 600) {
 
 // ─── AI caller for QUESTION GENERATION (fast: low token limit) ───────────────
 async function callAIForQuestion(messages, plainPrompt) {
-  if (NVIDIA_KEY) return callNvidia(messages, NVIDIA_KEY, 2, 150);  // 150 tokens = fast
+  if (NVIDIA_KEY) return callNvidia(messages, NVIDIA_KEY, NVIDIA_MODEL, 2, 150);  // 150 tokens = fast
   if (OPENAI_KEY) return callOpenAI(messages);
   if (GEMINI_KEY) return callGemini(plainPrompt || messages.map(m => m.content).join('\n'));
   throw new Error('No AI API key configured');
@@ -82,8 +108,8 @@ async function callAIForQuestion(messages, plainPrompt) {
 
 // ─── AI caller for EVALUATION (needs more tokens for JSON output) ─────────────
 async function callAIForEval(messages, plainPrompt, maxTokens = 500) {
-  if (NVIDIA_KEY_2) return callNvidia(messages, NVIDIA_KEY_2, 2, maxTokens);
-  if (NVIDIA_KEY)   return callNvidia(messages, NVIDIA_KEY,   2, maxTokens);
+  if (NVIDIA_KEY_2) return callNvidia(messages, NVIDIA_KEY_2, NVIDIA_MODEL_EVAL, 2, maxTokens);
+  if (NVIDIA_KEY)   return callNvidia(messages, NVIDIA_KEY,   NVIDIA_MODEL_EVAL, 2, maxTokens);
   if (OPENAI_KEY)   return callOpenAI(messages, maxTokens);
   if (GEMINI_KEY)   return callGemini(plainPrompt || messages.map(m => m.content).join('\n'), maxTokens);
   throw new Error('No AI API key configured');
