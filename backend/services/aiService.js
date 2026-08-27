@@ -7,17 +7,19 @@ const NVIDIA_KEY_2 = process.env.NVIDIA_API_KEY_2?.startsWith('nvapi-') ? proces
 const OPENAI_KEY = process.env.OPENAI_API_KEY?.startsWith('sk-') ? process.env.OPENAI_API_KEY : null;
 const GEMINI_KEY = process.env.GEMINI_API_KEY?.startsWith('AI') ? process.env.GEMINI_API_KEY : null;
 const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-const rawModel = process.env.NVIDIA_MODEL || 'nvidia/llama-3.1-nemotron-51b-instruct';
-const rawModelEval = process.env.NVIDIA_MODEL_EVAL || process.env.NVIDIA_MODEL || 'nvidia/llama-3.1-nemotron-70b-instruct';
+const rawModel = process.env.NVIDIA_MODEL || 'meta/llama-3.2-11b-vision-instruct';
+const rawModelEval = process.env.NVIDIA_MODEL_EVAL || process.env.NVIDIA_MODEL || 'meta/llama-3.2-11b-vision-instruct';
 
 function normalizeModel(modelName) {
   if (!modelName) return modelName;
-  // Automatically map retired / deprecated models to active equivalents
-  if (modelName.includes('llama-3.1-8b-instruct')) {
-    return 'nvidia/llama-3.1-nemotron-51b-instruct';
-  }
-  if (modelName.includes('llama-3.1-70b-instruct')) {
-    return 'nvidia/llama-3.1-nemotron-70b-instruct';
+  // Automatically map retired or unauthorized models to the confirmed working vision model
+  if (
+    modelName.includes('llama-3.1-8b-instruct') || 
+    modelName.includes('nemotron-51b-instruct') ||
+    modelName.includes('llama-3.1-70b-instruct') ||
+    modelName.includes('nemotron-70b-instruct')
+  ) {
+    return 'meta/llama-3.2-11b-vision-instruct';
   }
   return modelName;
 }
