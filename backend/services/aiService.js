@@ -188,25 +188,29 @@ export async function evaluateAnswer(question, answer, type, domain, questionInd
     return mockEvaluate(question, answer, type, domain, questionIndex);
   }
 
-  const systemMsg = 'You are an encouraging interview coach. Always respond with valid JSON only — no markdown, no extra text.';
+  const systemMsg = 'You are a rigorous, objective technical interviewer. Always respond with valid JSON only — no markdown, no extra text.';
 
-  const userMsg = `Evaluate this interview answer.
+  const userMsg = `Strictly evaluate this interview answer for technical accuracy, completeness, and clarity. Be rigorous and do not give partial credit unless the explanation is mostly correct.
 
 Context: ${type} interview on "${domain}"
 Q: "${question}"
 Answer: "${answer}"
 
-Rubric: 90-100=Perfect, 75-89=Very good, 60-74=Good(acceptable), 40-59=Partial, 0-39=Weak.
-If the main concept is correct (even if incomplete) give at least 60.
+Rubric:
+- 90-100: Excellent/Perfect. Flawless explanation, precise technical terms, and correct logic.
+- 75-89: Very good. Mostly correct, minor details omitted or minor explanation gaps.
+- 60-74: Satisfactory. Core concept is correct but lacks technical depth or has minor inaccuracies.
+- 40-59: Needs Improvement. Key details are incorrect, explanation is highly incomplete, or lacks understanding.
+- 0-39: Incorrect/Weak. Irrelevant response, blank, or technically wrong.
 
 Respond ONLY with this JSON:
 {
   "score": <0-100>,
   "verdict": "<Excellent|Good|Satisfactory|Needs Improvement|Incorrect>",
-  "quickFeedback": "<1 encouraging sentence the interviewer says>",
+  "quickFeedback": "<1 direct, objective feedback sentence the interviewer says>",
   "breakdown": { "content": <0-100>, "communication": <0-100>, "confidence": <0-100> },
   "strengths": ["<what was good>"],
-  "weaknesses": ["<what to improve>"],
+  "weaknesses": ["<what to improve or correct strictly>"],
   "suggestedAnswer": "<ideal answer in 2-3 sentences>"
 }`;
 
