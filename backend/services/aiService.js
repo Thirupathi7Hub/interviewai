@@ -31,7 +31,11 @@ if (NVIDIA_KEY) {
     console.log(`🤖 Eval-Engine: NVIDIA NIM (${NVIDIA_MODEL_EVAL}) [key-1]`);
   }
 } else if (GROQ_KEY) {
-  console.log(`🤖 AI Engine: Groq (${GROQ_MODEL}) [Meta Llama]`);
+  console.log(`🤖 AI Engine: Groq [Meta Llama]`);
+  // Pre-fetch live available models from Groq API
+  getAvailableGroqModels().then(m => {
+    console.log(`✅ Groq active models loaded (${m.length}):`, m.slice(0, 5).join(', '));
+  }).catch(() => {});
 } else if (OPENAI_KEY) {
   console.log(`🤖 AI Engine: OpenAI (${MODEL})`);
 } else if (GEMINI_KEY) {
@@ -86,18 +90,61 @@ async function callOpenAI(messages, maxTokens = 600) {
   return res.data.choices[0].message.content;
 }
 
-// ─── Groq (Meta Llama 3.1 8B, Llama 3 70B) ──────────────────────────────────
-async function callGroq(messages, maxTokens = 600) {
-  const modelsToTry = [
+// ─── Groq (Dynamic Model Discovery + Auto Fallback) ─────────────────────────
+let cachedGroqModels = null;
+let lastGroqModelFetch = 0;
+
+async function getAvailableGroqModels() {
+  const now = Date.now();
+  if (cachedGroqModels && cachedGroqModels.length > 0 && (now - lastGroqModelFetch < 300000)) {
+    return cachedGroqModels;
+  }
+
+  try {
+    const res = await axios.get('https://api.groq.com/openai/v1/models', {
+      headers: { Authorization: `Bearer ${GROQ_KEY}` },
+      timeout: 6000,
+    });
+    const allModels = res.data?.data?.map(m => m.id) || [];
+    console.log('📋 Groq available models on this key:', allModels);
+
+    // Filter for text generation / chat models
+    const chatModels = allModels.filter(id =>
+      !id.includes('whisper') &&
+      !id.includes('guard') &&
+      !id.includes('safeguard')
+    );
+
+    if (chatModels.length > 0) {
+      cachedGroqModels = chatModels;
+      lastGroqModelFetch = now;
+      return chatModels;
+    }
+  } catch (err) {
+    console.warn('⚠️ Could not fetch Groq /v1/models list:', err.response?.data?.error?.message || err.message);
+  }
+
+  // Fallback defaults if list fetch fails
+  return [
     GROQ_MODEL,
     'llama-3.1-8b-instant',
-    'llama3-70b-8192',
-    'llama3-8b-8192',
+    'llama-3.3-70b-versatile',
+    'qwen-2.5-32b',
+    'gemma2-9b-it',
+  ].filter(Boolean);
+}
+
+async function callGroq(messages, maxTokens = 600) {
+  const available = await getAvailableGroqModels();
+
+  // Try configured GROQ_MODEL first if in available list, then try all remaining active models
+  const orderedModels = [
+    ...(available.includes(GROQ_MODEL) ? [GROQ_MODEL] : []),
+    ...available.filter(m => m !== GROQ_MODEL),
   ];
-  const uniqueModels = [...new Set(modelsToTry.filter(Boolean))];
 
   let lastErr;
-  for (const model of uniqueModels) {
+  for (const model of orderedModels) {
     try {
       const res = await axios.post(
         'https://api.groq.com/openai/v1/chat/completions',
@@ -107,9 +154,16 @@ async function callGroq(messages, maxTokens = 600) {
       return res.data.choices[0].message.content;
     } catch (err) {
       lastErr = err;
-      const isNotFound = err.response?.data?.error?.code === 'model_not_found' || err.response?.status === 404;
-      if (isNotFound) {
-        console.warn(`⚠️ Groq model "${model}" not found, trying fallback model...`);
+      const errCode = err.response?.data?.error?.code;
+      const errMsg = err.response?.data?.error?.message || err.message || '';
+      const isModelIssue =
+        errCode === 'model_not_found' ||
+        errCode === 'model_decommissioned' ||
+        err.response?.status === 404 ||
+        (err.response?.status === 400 && errMsg.toLowerCase().includes('model'));
+
+      if (isModelIssue) {
+        console.warn(`⚠️ Groq model "${model}" issue (${errCode || errMsg}), trying next model...`);
         continue;
       }
       throw err;
