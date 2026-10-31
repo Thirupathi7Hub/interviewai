@@ -4,33 +4,24 @@ import { generateQuestion as mockQuestion, evaluateAnswer as mockEvaluate } from
 const USE_MOCK = process.env.USE_MOCK_AI === 'true';
 const NVIDIA_KEY = process.env.NVIDIA_API_KEY?.startsWith('nvapi-') ? process.env.NVIDIA_API_KEY : null;
 const NVIDIA_KEY_2 = process.env.NVIDIA_API_KEY_2?.startsWith('nvapi-') ? process.env.NVIDIA_API_KEY_2 : null;
+const GROQ_KEY = process.env.GROQ_API_KEY?.startsWith('gsk_') ? process.env.GROQ_API_KEY : null;
 const OPENAI_KEY = process.env.OPENAI_API_KEY?.startsWith('sk-') ? process.env.OPENAI_API_KEY : null;
 const GEMINI_KEY = process.env.GEMINI_API_KEY?.startsWith('AI') ? process.env.GEMINI_API_KEY : null;
 const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 const rawModel = process.env.NVIDIA_MODEL || 'meta/llama-3.2-11b-vision-instruct';
 const rawModelEval = process.env.NVIDIA_MODEL_EVAL || process.env.NVIDIA_MODEL || 'meta/llama-3.2-11b-vision-instruct';
 
 function normalizeModel(modelName) {
-  if (!modelName) return modelName;
-  const nameLower = modelName.toLowerCase();
-  // Automatically map retired, restricted, or custom Llama/Nemotron/Minitron models to the working Vision model
-  if (
-    nameLower.includes('llama') || 
-    nameLower.includes('nemotron') || 
-    nameLower.includes('minitron')
-  ) {
-    if (nameLower.includes('llama-3.2-11b-vision-instruct')) {
-      return modelName;
-    }
-    return 'meta/llama-3.2-11b-vision-instruct';
-  }
-  return modelName;
+  if (!modelName) return 'meta/llama-3.2-11b-vision-instruct';
+  // Respect the explicitly configured model from .env
+  return modelName.trim();
 }
 
 const NVIDIA_MODEL = normalizeModel(rawModel);
 const NVIDIA_MODEL_EVAL = normalizeModel(rawModelEval);
 
-const hasRealAI = () => !USE_MOCK && !!(NVIDIA_KEY || OPENAI_KEY || GEMINI_KEY);
+const hasRealAI = () => !USE_MOCK && !!(NVIDIA_KEY || GROQ_KEY || OPENAI_KEY || GEMINI_KEY);
 
 if (NVIDIA_KEY) {
   console.log(`🤖 Q-Engine  : NVIDIA NIM (${NVIDIA_MODEL}) [key-1]`);
@@ -39,6 +30,8 @@ if (NVIDIA_KEY) {
   } else {
     console.log(`🤖 Eval-Engine: NVIDIA NIM (${NVIDIA_MODEL_EVAL}) [key-1]`);
   }
+} else if (GROQ_KEY) {
+  console.log(`🤖 AI Engine: Groq (${GROQ_MODEL}) [Meta Llama]`);
 } else if (OPENAI_KEY) {
   console.log(`🤖 AI Engine: OpenAI (${MODEL})`);
 } else if (GEMINI_KEY) {
@@ -93,6 +86,16 @@ async function callOpenAI(messages, maxTokens = 600) {
   return res.data.choices[0].message.content;
 }
 
+// ─── Groq (Meta Llama 3.3 70B & 3.1 8B) ────────────────────────────────────
+async function callGroq(messages, maxTokens = 600) {
+  const res = await axios.post(
+    'https://api.groq.com/openai/v1/chat/completions',
+    { model: GROQ_MODEL, messages, temperature: 0.7, max_tokens: maxTokens },
+    { headers: { Authorization: `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' } }
+  );
+  return res.data.choices[0].message.content;
+}
+
 // ─── Gemini ──────────────────────────────────────────────────────────────────
 async function callGemini(prompt, maxTokens = 600) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
@@ -105,7 +108,15 @@ async function callGemini(prompt, maxTokens = 600) {
 
 // ─── AI caller for QUESTION GENERATION (fast: low token limit) ───────────────
 async function callAIForQuestion(messages, plainPrompt) {
-  if (NVIDIA_KEY) return callNvidia(messages, NVIDIA_KEY, NVIDIA_MODEL, 2, 150);  // 150 tokens = fast
+  if (NVIDIA_KEY) {
+    try {
+      return await callNvidia(messages, NVIDIA_KEY, NVIDIA_MODEL, 2, 150);
+    } catch (err) {
+      if (!GROQ_KEY && !OPENAI_KEY && !GEMINI_KEY) throw err;
+      console.warn('⚠️ NVIDIA question generation failed, falling back to backup provider:', err.message);
+    }
+  }
+  if (GROQ_KEY) return callGroq(messages, 150);
   if (OPENAI_KEY) return callOpenAI(messages);
   if (GEMINI_KEY) return callGemini(plainPrompt || messages.map(m => m.content).join('\n'));
   throw new Error('No AI API key configured');
@@ -118,10 +129,17 @@ async function callAIForEval(messages, plainPrompt, maxTokens = 500) {
       return await callNvidia(messages, NVIDIA_KEY_2, NVIDIA_MODEL_EVAL, 2, maxTokens);
     } catch (err) {
       console.warn('⚠️ NVIDIA_KEY_2 evaluation failed (possibly due to namespace or EOL permissions). Falling back to NVIDIA_KEY:', err.message);
-      // Fall through to NVIDIA_KEY
     }
   }
-  if (NVIDIA_KEY)   return callNvidia(messages, NVIDIA_KEY,   NVIDIA_MODEL_EVAL, 2, maxTokens);
+  if (NVIDIA_KEY) {
+    try {
+      return await callNvidia(messages, NVIDIA_KEY, NVIDIA_MODEL_EVAL, 2, maxTokens);
+    } catch (err) {
+      if (!GROQ_KEY && !OPENAI_KEY && !GEMINI_KEY) throw err;
+      console.warn('⚠️ NVIDIA evaluation failed, falling back to backup provider:', err.message);
+    }
+  }
+  if (GROQ_KEY)   return callGroq(messages, maxTokens);
   if (OPENAI_KEY)   return callOpenAI(messages, maxTokens);
   if (GEMINI_KEY)   return callGemini(plainPrompt || messages.map(m => m.content).join('\n'), maxTokens);
   throw new Error('No AI API key configured');
