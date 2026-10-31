@@ -6,9 +6,10 @@ const NVIDIA_KEY = process.env.NVIDIA_API_KEY?.startsWith('nvapi-') ? process.en
 const NVIDIA_KEY_2 = process.env.NVIDIA_API_KEY_2?.startsWith('nvapi-') ? process.env.NVIDIA_API_KEY_2 : null;
 const GROQ_KEY = process.env.GROQ_API_KEY?.startsWith('gsk_') ? process.env.GROQ_API_KEY : null;
 const OPENAI_KEY = process.env.OPENAI_API_KEY?.startsWith('sk-') ? process.env.OPENAI_API_KEY : null;
-const GEMINI_KEY = process.env.GEMINI_API_KEY?.startsWith('AI') ? process.env.GEMINI_API_KEY : null;
+const GEMINI_KEY = (process.env.GEMINI_API_KEY?.startsWith('AI') || process.env.GEMINI_API_KEY?.length > 15) ? process.env.GEMINI_API_KEY : null;
 const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
 const rawModel = process.env.NVIDIA_MODEL || 'meta/llama-3.2-11b-vision-instruct';
 const rawModelEval = process.env.NVIDIA_MODEL_EVAL || process.env.NVIDIA_MODEL || 'meta/llama-3.2-11b-vision-instruct';
 
@@ -21,27 +22,19 @@ function normalizeModel(modelName) {
 const NVIDIA_MODEL = normalizeModel(rawModel);
 const NVIDIA_MODEL_EVAL = normalizeModel(rawModelEval);
 
-const hasRealAI = () => !USE_MOCK && !!(NVIDIA_KEY || GROQ_KEY || OPENAI_KEY || GEMINI_KEY);
+const hasRealAI = () => !USE_MOCK && !!(NVIDIA_KEY || GROQ_KEY || GEMINI_KEY || OPENAI_KEY);
 
-if (NVIDIA_KEY) {
-  console.log(`🤖 Q-Engine  : NVIDIA NIM (${NVIDIA_MODEL}) [key-1]`);
-  if (NVIDIA_KEY_2) {
-    console.log(`🤖 Eval-Engine: NVIDIA NIM (${NVIDIA_MODEL_EVAL}) [key-2]`);
-  } else {
-    console.log(`🤖 Eval-Engine: NVIDIA NIM (${NVIDIA_MODEL_EVAL}) [key-1]`);
-  }
-} else if (GROQ_KEY) {
-  console.log(`🤖 AI Engine: Groq [Meta Llama]`);
-  // Pre-fetch live available models from Groq API
+console.log('🤖 AI Priority Cascade Configured:');
+console.log(`   1. [Priority 1] NVIDIA NIM   : ${NVIDIA_KEY ? `✅ Ready (${NVIDIA_MODEL})` : '❌ Not set'}`);
+console.log(`   2. [Priority 2] Groq Cloud   : ${GROQ_KEY ? `✅ Ready (${GROQ_MODEL})` : '❌ Not set'}`);
+console.log(`   3. [Priority 3] Google Gemini: ${GEMINI_KEY ? `✅ Ready (${GEMINI_MODEL})` : '❌ Not set'}`);
+if (OPENAI_KEY) console.log(`   *  [OpenAI Backup]           : ✅ Ready (${MODEL})`);
+console.log(`   4. [Priority 4] Mock AI      : ✅ Fallback active (USE_MOCK_AI=${USE_MOCK})`);
+
+if (GROQ_KEY) {
   getAvailableGroqModels().then(m => {
-    console.log(`✅ Groq active models loaded (${m.length}):`, m.slice(0, 5).join(', '));
+    console.log(`   ⚡ Groq live models synced (${m.length}):`, m.slice(0, 4).join(', '));
   }).catch(() => {});
-} else if (OPENAI_KEY) {
-  console.log(`🤖 AI Engine: OpenAI (${MODEL})`);
-} else if (GEMINI_KEY) {
-  console.log('🤖 AI Engine: Google Gemini');
-} else {
-  console.log('🤖 AI Engine: Mock (no valid API key found)');
 }
 
 // ─── NVIDIA NIM caller (with retry, accepts explicit key and model) ──────────
@@ -174,7 +167,7 @@ async function callGroq(messages, maxTokens = 600) {
 
 // ─── Gemini ──────────────────────────────────────────────────────────────────
 async function callGemini(prompt, maxTokens = 600) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`;
   const res = await axios.post(url, {
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: { maxOutputTokens: maxTokens, temperature: 0.7 },
@@ -182,43 +175,121 @@ async function callGemini(prompt, maxTokens = 600) {
   return res.data.candidates[0].content.parts[0].text;
 }
 
-// ─── AI caller for QUESTION GENERATION (fast: low token limit) ───────────────
+// ─── AI caller for QUESTION GENERATION (Priority: NVIDIA -> Groq -> Gemini -> Mock) ─
 async function callAIForQuestion(messages, plainPrompt) {
+  // 1. Priority 1: NVIDIA NIM
   if (NVIDIA_KEY) {
     try {
-      return await callNvidia(messages, NVIDIA_KEY, NVIDIA_MODEL, 2, 150);
+      const q = await callNvidia(messages, NVIDIA_KEY, NVIDIA_MODEL, 1, 150);
+      if (q && q.trim()) {
+        console.log(`✨ [P1: NVIDIA] Question #${messages[1]?.content?.slice(-2) || ''} generated`);
+        return q;
+      }
     } catch (err) {
-      if (!GROQ_KEY && !OPENAI_KEY && !GEMINI_KEY) throw err;
-      console.warn('⚠️ NVIDIA question generation failed, falling back to backup provider:', err.message);
+      console.warn(`⚠️ [P1: NVIDIA Failed] ${err.response?.data?.detail || err.message} → Switching to Priority 2 (Groq)...`);
     }
   }
-  if (GROQ_KEY) return callGroq(messages, 150);
-  if (OPENAI_KEY) return callOpenAI(messages);
-  if (GEMINI_KEY) return callGemini(plainPrompt || messages.map(m => m.content).join('\n'));
-  throw new Error('No AI API key configured');
+
+  // 2. Priority 2: Groq Cloud
+  if (GROQ_KEY) {
+    try {
+      const q = await callGroq(messages, 150);
+      if (q && q.trim()) {
+        console.log('✨ [P2: Groq] Question generated');
+        return q;
+      }
+    } catch (err) {
+      console.warn(`⚠️ [P2: Groq Failed] ${err.response?.data?.error?.message || err.message} → Switching to Priority 3 (Gemini)...`);
+    }
+  }
+
+  // 3. Priority 3: Google Gemini
+  if (GEMINI_KEY) {
+    try {
+      const prompt = plainPrompt || messages.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n');
+      const q = await callGemini(prompt, 150);
+      if (q && q.trim()) {
+        console.log('✨ [P3: Gemini] Question generated');
+        return q;
+      }
+    } catch (err) {
+      console.warn(`⚠️ [P3: Gemini Failed] ${err.response?.data?.error?.message || err.message} → Falling back to Mock.`);
+    }
+  }
+
+  // Optional: OpenAI Backup
+  if (OPENAI_KEY) {
+    try {
+      const q = await callOpenAI(messages, 150);
+      if (q && q.trim()) {
+        console.log('✨ [OpenAI Backup] Question generated');
+        return q;
+      }
+    } catch (err) {
+      console.warn(`⚠️ [OpenAI Backup Failed] ${err.message}`);
+    }
+  }
+
+  throw new Error('All configured real AI providers failed or none configured. Falling back to Mock.');
 }
 
-// ─── AI caller for EVALUATION (needs more tokens for JSON output) ─────────────
+// ─── AI caller for EVALUATION (Priority: NVIDIA -> Groq -> Gemini -> Mock) ───
 async function callAIForEval(messages, plainPrompt, maxTokens = 500) {
-  if (NVIDIA_KEY_2) {
+  // 1. Priority 1: NVIDIA NIM
+  if (NVIDIA_KEY_2 || NVIDIA_KEY) {
     try {
-      return await callNvidia(messages, NVIDIA_KEY_2, NVIDIA_MODEL_EVAL, 2, maxTokens);
+      const key = NVIDIA_KEY_2 || NVIDIA_KEY;
+      const res = await callNvidia(messages, key, NVIDIA_MODEL_EVAL, 1, maxTokens);
+      if (res && res.trim()) {
+        console.log('✨ [P1: NVIDIA] Answer evaluated');
+        return res;
+      }
     } catch (err) {
-      console.warn('⚠️ NVIDIA_KEY_2 evaluation failed (possibly due to namespace or EOL permissions). Falling back to NVIDIA_KEY:', err.message);
+      console.warn(`⚠️ [P1: NVIDIA Eval Failed] ${err.response?.data?.detail || err.message} → Switching to Priority 2 (Groq)...`);
     }
   }
-  if (NVIDIA_KEY) {
+
+  // 2. Priority 2: Groq Cloud
+  if (GROQ_KEY) {
     try {
-      return await callNvidia(messages, NVIDIA_KEY, NVIDIA_MODEL_EVAL, 2, maxTokens);
+      const res = await callGroq(messages, maxTokens);
+      if (res && res.trim()) {
+        console.log('✨ [P2: Groq] Answer evaluated');
+        return res;
+      }
     } catch (err) {
-      if (!GROQ_KEY && !OPENAI_KEY && !GEMINI_KEY) throw err;
-      console.warn('⚠️ NVIDIA evaluation failed, falling back to backup provider:', err.message);
+      console.warn(`⚠️ [P2: Groq Eval Failed] ${err.response?.data?.error?.message || err.message} → Switching to Priority 3 (Gemini)...`);
     }
   }
-  if (GROQ_KEY)   return callGroq(messages, maxTokens);
-  if (OPENAI_KEY)   return callOpenAI(messages, maxTokens);
-  if (GEMINI_KEY)   return callGemini(plainPrompt || messages.map(m => m.content).join('\n'), maxTokens);
-  throw new Error('No AI API key configured');
+
+  // 3. Priority 3: Google Gemini
+  if (GEMINI_KEY) {
+    try {
+      const prompt = plainPrompt || messages.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n');
+      const res = await callGemini(prompt, maxTokens);
+      if (res && res.trim()) {
+        console.log('✨ [P3: Gemini] Answer evaluated');
+        return res;
+      }
+    } catch (err) {
+      console.warn(`⚠️ [P3: Gemini Eval Failed] ${err.response?.data?.error?.message || err.message} → Falling back to Mock.`);
+    }
+  }
+
+  // Optional: OpenAI Backup
+  if (OPENAI_KEY) {
+    try {
+      const res = await callOpenAI(messages, maxTokens);
+      if (res && res.trim()) {
+        console.log('✨ [OpenAI Backup] Answer evaluated');
+        return res;
+      }
+    } catch (err) {
+      console.warn(`⚠️ [OpenAI Backup Failed] ${err.message}`);
+    }
+  }
+
+  throw new Error('All configured real AI providers failed or none configured. Falling back to Mock.');
 }
 
 // ─── Question Generation ──────────────────────────────────────────────────
@@ -325,9 +396,20 @@ Respond ONLY with this JSON:
 
   try {
     const rawText = await callAIForEval(messages, systemMsg + '\n' + userMsg);
-    const cleaned = rawText.replace(/```json|```/g, '').trim();
+    let parsed;
+    try {
+      const cleaned = rawText.replace(/```json|```/g, '').trim();
+      parsed = JSON.parse(cleaned);
+    } catch {
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsed = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error('Unable to extract valid JSON evaluation from model response');
+      }
+    }
     console.log('✅ AI evaluation complete');
-    return JSON.parse(cleaned);
+    return parsed;
   } catch (err) {
     console.error('❌ AI evaluation failed:', err.response?.data || err.message);
     console.log('⚠️ Falling back to mock evaluation');
