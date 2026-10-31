@@ -8,7 +8,7 @@ const GROQ_KEY = process.env.GROQ_API_KEY?.startsWith('gsk_') ? process.env.GROQ
 const OPENAI_KEY = process.env.OPENAI_API_KEY?.startsWith('sk-') ? process.env.OPENAI_API_KEY : null;
 const GEMINI_KEY = process.env.GEMINI_API_KEY?.startsWith('AI') ? process.env.GEMINI_API_KEY : null;
 const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
 const rawModel = process.env.NVIDIA_MODEL || 'meta/llama-3.2-11b-vision-instruct';
 const rawModelEval = process.env.NVIDIA_MODEL_EVAL || process.env.NVIDIA_MODEL || 'meta/llama-3.2-11b-vision-instruct';
 
@@ -86,14 +86,36 @@ async function callOpenAI(messages, maxTokens = 600) {
   return res.data.choices[0].message.content;
 }
 
-// ─── Groq (Meta Llama 3.3 70B & 3.1 8B) ────────────────────────────────────
+// ─── Groq (Meta Llama 3.1 8B, Llama 3 70B) ──────────────────────────────────
 async function callGroq(messages, maxTokens = 600) {
-  const res = await axios.post(
-    'https://api.groq.com/openai/v1/chat/completions',
-    { model: GROQ_MODEL, messages, temperature: 0.7, max_tokens: maxTokens },
-    { headers: { Authorization: `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' } }
-  );
-  return res.data.choices[0].message.content;
+  const modelsToTry = [
+    GROQ_MODEL,
+    'llama-3.1-8b-instant',
+    'llama3-70b-8192',
+    'llama3-8b-8192',
+  ];
+  const uniqueModels = [...new Set(modelsToTry.filter(Boolean))];
+
+  let lastErr;
+  for (const model of uniqueModels) {
+    try {
+      const res = await axios.post(
+        'https://api.groq.com/openai/v1/chat/completions',
+        { model, messages, temperature: 0.7, max_tokens: maxTokens },
+        { headers: { Authorization: `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' } }
+      );
+      return res.data.choices[0].message.content;
+    } catch (err) {
+      lastErr = err;
+      const isNotFound = err.response?.data?.error?.code === 'model_not_found' || err.response?.status === 404;
+      if (isNotFound) {
+        console.warn(`⚠️ Groq model "${model}" not found, trying fallback model...`);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
 }
 
 // ─── Gemini ──────────────────────────────────────────────────────────────────
